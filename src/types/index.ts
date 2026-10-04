@@ -15,6 +15,7 @@ export type UserRole =
   | 'MEMBER';
 
 export type MembershipStatus = 'ACTIVE' | 'INACTIVE' | 'PENDING';
+export type AccountStatus = 'PENDING' | 'ACTIVE' | 'SUSPENDED';
 
 export type TaskStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE';
 export type TaskManualProgress = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
@@ -117,7 +118,8 @@ export interface LocalGovernment {
 }
 
 export interface Member {
-  id: string;
+  id: string; // Document ID (usually Firebase Auth UID once activated)
+  uid?: string; // Explicit Firebase Auth UID
   fullName: string;
   email: string;
   phone: string;
@@ -125,7 +127,13 @@ export interface Member {
   lgName: string;
   state: string;
   role: UserRole;
-  membershipStatus: MembershipStatus;
+  groupId?: string; // Group / Team assignment
+  membershipStatus: MembershipStatus; // Operational status: ACTIVE | INACTIVE | PENDING
+  accountStatus: AccountStatus; // Auth access state: PENDING | ACTIVE | SUSPENDED
+  invitationCode?: string; // One-time activation code for pending invites
+  invitedBy?: string;
+  invitedAt?: string;
+  activatedAt?: string;
   dateJoined: string;
   profilePhoto?: string;
   skills: string[];
@@ -137,9 +145,8 @@ export interface Member {
   fcmbAccount?: string;
   ppaName?: string;
   ppaAddress?: string;
-  password?: string;
   requiresProfileUpdate?: boolean;
-  lastLogin?: string;
+  lastLoginAt?: string;
   createdAt?: string;
   updatedAt?: string;
   createdBy?: string;

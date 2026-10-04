@@ -25,7 +25,7 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
     
-    // Auth tokens do not contain roles. We must look up the member document.
+    // Auth tokens do not contain roles. We look up the member document.
     function getMemberData(userId) {
       return get(/databases/$(database)/documents/members/$(userId)).data;
     }
@@ -34,27 +34,35 @@ service cloud.firestore {
       return getMemberData(request.auth.uid).role;
     }
     
-    function isLeadership() {
+    function isCoordinator() {
       return isSignedIn() && (
-        getUserRole() in [
-          'CDS_COORDINATOR', 'STATE_PRESIDENT', 'VP_GROWTH', 
-          'VP_ACCOUNTABILITY', 'VP_COMMUNITY_IMPACT', 'LG_PRESIDENT'
-        ] ||
-        request.auth.token.email in ['kolawoles445@gmail.com', 'jomaschools@gmail.com', 'coordinator@dodeel.org']
+        request.auth.token.email in ['kolawoles445@gmail.com', 'jomaschools@gmail.com', 'coordinator@dodeel.org'] ||
+        getUserRole() == 'CDS_COORDINATOR'
       );
     }
     
-    function isCoordinator() {
+    function isStateExecutive() {
       return isSignedIn() && (
-        getUserRole() == 'CDS_COORDINATOR' ||
-        request.auth.token.email in ['kolawoles445@gmail.com', 'jomaschools@gmail.com', 'coordinator@dodeel.org']
+        isCoordinator() ||
+        getUserRole() in ['STATE_PRESIDENT', 'VP_GROWTH', 'VP_ACCOUNTABILITY', 'VP_COMMUNITY_IMPACT']
+      );
+    }
+    
+    function isLeadership() {
+      return isSignedIn() && (
+        isCoordinator() ||
+        getUserRole() in [
+          'STATE_PRESIDENT', 'VP_GROWTH', 
+          'VP_ACCOUNTABILITY', 'VP_COMMUNITY_IMPACT', 'LG_PRESIDENT'
+        ]
       );
     }
 
-    function isStateExecutive() {
+    // Ensures account is not suspended from performing operational writes
+    function isActiveUser() {
       return isSignedIn() && (
-        getUserRole() in ['STATE_PRESIDENT', 'VP_GROWTH', 'VP_ACCOUNTABILITY', 'VP_COMMUNITY_IMPACT'] ||
-        request.auth.token.email in ['kolawoles445@gmail.com', 'jomaschools@gmail.com', 'coordinator@dodeel.org']
+        isCoordinator() ||
+        getMemberData(request.auth.uid).accountStatus != 'SUSPENDED'
       );
     }
 
@@ -64,8 +72,8 @@ service cloud.firestore {
     
     function isValidMember(data) {
       return data.keys().hasAll(['fullName', 'email', 'lgId', 'role', 'membershipStatus']) &&
-             data.fullName is string && data.fullName.size() <= 100 &&
-             data.email is string && data.email.size() <= 100 &&
+             data.fullName is string && data.fullName.size() <= 120 &&
+             data.email is string && data.email.size() <= 120 &&
              data.role in [
                'CDS_COORDINATOR', 'STATE_PRESIDENT', 'VP_GROWTH', 'VP_ACCOUNTABILITY', 
                'VP_COMMUNITY_IMPACT', 'LG_PRESIDENT', 'EXECUTIVE', 'GROUP_LEADER', 'MEMBER'
@@ -74,7 +82,7 @@ service cloud.firestore {
 
     function isValidTask(data) {
       return data.keys().hasAll(['title', 'description', 'assignedTo', 'assignedBy', 'deadline']) &&
-             data.title is string && data.title.size() <= 200 &&
+             data.title is string && data.title.size() <= 250 &&
              data.assignedTo is string &&
              data.assignedBy is string &&
              data.deadline is string;
@@ -89,32 +97,47 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // MEMBERS
+    // MEMBERS (Primary DO-DEEL Member Registry)
     match /members/{userId} {
-      allow read: if isSignedIn(); // Allow list and get for all members to support directory and lookups
+      allow read: if isSignedIn(); // Directory and leadership lookups
       
+      // Controlled creation: only authorized leaders (CDS Coordinator, State President, LG President)
+      // or an activating user claiming their own UID matching their registered invitation
       allow create: if isSignedIn() && (
         isCoordinator() || 
-        (incoming().role == 'MEMBER' && getUserRole() == 'LG_PRESIDENT') ||
-        isOwner(userId) // Signup
+        getUserRole() in ['STATE_PRESIDENT', 'LG_PRESIDENT'] ||
+        isOwner(userId)
       ) && isValidMember(incoming());
       
       allow update: if isSignedIn() && (
         isCoordinator() ||
-        (isLeadership() && incoming().diff(existing()).affectedKeys().hasOnly(['membershipStatus', 'role', 'assignedTeam'])) ||
-        (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['phone', 'bio', 'skills', 'fcmbAccount', 'ppaName', 'ppaAddress', 'profilePhoto', 'requiresProfileUpdate', 'lastLogin']))
+        (isLeadership() && incoming().diff(existing()).affectedKeys().hasOnly(['membershipStatus', 'accountStatus', 'role', 'lgId', 'lgName', 'assignedTeam', 'invitationCode', 'invitedAt', 'updatedAt'])) ||
+        (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['phone', 'bio', 'skills', 'fcmbAccount', 'ppaName', 'ppaAddress', 'profilePhoto', 'requiresProfileUpdate', 'lastLogin', 'lastLoginAt', 'accountStatus', 'membershipStatus', 'activatedAt', 'updatedAt', 'invitationCode', 'uid']))
       ) && isValidMember(incoming());
+
+      allow delete: if isSignedIn() && isCoordinator();
     }
 
-    // TASKS
+    // USERS (Mirror collection for UID-based profile structure)
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && (
+        isCoordinator() ||
+        isLeadership() ||
+        isOwner(userId)
+      );
+      allow delete: if isSignedIn() && isCoordinator();
+    }
+
+    // TASKS (Operational Responsibilities)
     match /tasks/{taskId} {
-      allow read: if isSignedIn(); // Allow list and get for all members to support dashboard views
+      allow read: if isSignedIn();
       
-      allow create: if isSignedIn() && isLeadership() && isValidTask(incoming());
+      allow create: if isSignedIn() && isActiveUser() && isLeadership() && isValidTask(incoming());
       
-      allow update: if isSignedIn() && (
+      allow update: if isSignedIn() && isActiveUser() && (
         (isLeadership() && isValidTask(incoming())) ||
-        (existing().assignedTo == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['manualProgress', 'status', 'evidence', 'result', 'hasEvidence']))
+        (existing().assignedTo == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['manualProgress', 'status', 'evidence', 'result', 'hasEvidence', 'completedAt', 'completionDate', 'updatedAt']))
       );
       
       allow delete: if isSignedIn() && isCoordinator();
@@ -123,20 +146,20 @@ service cloud.firestore {
     // ACTIVITIES
     match /activities/{activityId} {
       allow read: if isSignedIn();
-      allow create: if isLeadership();
-      allow update: if isLeadership();
-      allow delete: if isCoordinator();
+      allow create: if isSignedIn() && isActiveUser() && isLeadership();
+      allow update: if isSignedIn() && isActiveUser() && (isLeadership() || getUserRole() in ['EXECUTIVE', 'GROUP_LEADER']);
+      allow delete: if isSignedIn() && isCoordinator();
     }
 
-    // LGS (Local Governments)
+    // LOCAL GOVERNMENTS
     match /lgs/{lgId} {
       allow read: if isSignedIn();
-      allow write: if isCoordinator();
+      allow write: if isCoordinator() || isLeadership();
     }
 
     // DOCUMENTS
     match /documents/{docId} {
-      allow read: if isSignedIn(); // Simplified for now, though visibility logic could be added
+      allow read: if isSignedIn();
       allow write: if isCoordinator() || isStateExecutive();
     }
 
@@ -149,13 +172,19 @@ service cloud.firestore {
     // LEARNING
     match /learning/{learningId} {
       allow read: if isSignedIn();
-      allow write: if isLeadership();
+      allow write: if isSignedIn() && isActiveUser() && (isCoordinator() || getUserRole() in ['STATE_PRESIDENT', 'VP_GROWTH']);
     }
 
     // REPORTS
     match /reports/{reportId} {
       allow read: if isSignedIn();
-      allow write: if isLeadership() || getUserRole() == 'EXECUTIVE' || getUserRole() == 'GROUP_LEADER';
+      allow write: if isSignedIn() && isActiveUser() && (isLeadership() || getUserRole() in ['EXECUTIVE', 'GROUP_LEADER']);
+    }
+
+    // ANNOUNCEMENTS
+    match /announcements/{announcementId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isActiveUser() && isLeadership();
     }
   }
 }

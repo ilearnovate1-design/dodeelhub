@@ -15,6 +15,7 @@ import { MonthlyReports } from './components/reports/MonthlyReports';
 import { TaskFormModal } from './components/tasks/TaskFormModal';
 import { TaskList } from './components/tasks/TaskList';
 import { LoginView } from './components/auth/LoginView';
+import { SuspendedAccountView } from './components/auth/SuspendedAccountView';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { dataService } from './services/dataService';
 import {
@@ -43,7 +44,7 @@ import {
 } from 'lucide-react';
 
 const MainApp: React.FC = () => {
-  const { currentUser, currentRole, loading } = useAuth();
+  const { currentUser, currentRole, isSuspended, loading } = useAuth();
 
   // Primary state
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -73,14 +74,17 @@ const MainApp: React.FC = () => {
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [isRoleSwitcherOpen, setIsRoleSwitcherOpen] = useState(false);
 
-  // Initial Data Seeding & Reactive Sync
+  // Production Environment Initialization & Reactive Sync
   useEffect(() => {
     const init = async () => {
-      // Only attempt to seed if we have a user and they are a coordinator
-      // This prevents unauthenticated write errors on first load
+      // Ensure the production environment is purged of demo records and verified
       if (currentUser && canAccessAdmin(currentRole)) {
-        await dataService.seedInitialData();
-        await dataService.ensureSuperAdminUser('kolawoles445@gmail.com', 'Kolawole (Super Admin)', 'user-kolawole');
+        const isPurged = localStorage.getItem('dodeel_production_purged_v1');
+        if (!isPurged) {
+          await dataService.forceClearDemoContentAsync();
+        } else {
+          await dataService.ensureSuperAdminUser('kolawoles445@gmail.com', 'Kolawole (Super Admin)', 'user-kolawole');
+        }
       }
     };
     init();
@@ -133,6 +137,10 @@ const MainApp: React.FC = () => {
 
   if (!currentUser) {
     return <LoginView />;
+  }
+
+  if (isSuspended) {
+    return <SuspendedAccountView />;
   }
 
   const overdueCount = tasks.filter((t) => t.calculatedStatus === 'OVERDUE').length;

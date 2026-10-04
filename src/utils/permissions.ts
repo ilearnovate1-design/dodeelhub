@@ -189,3 +189,49 @@ export function canAccessAdmin(role: UserRole): boolean {
 export function isScopedToLG(role: UserRole): boolean {
   return role === 'LG_PRESIDENT';
 }
+
+/**
+ * Can user register/invite new members?
+ * Prompt: "Authorized roles that can create/register members: CDS Coordinator, State President, LG President"
+ */
+export function canRegisterMember(role: UserRole): boolean {
+  return ['CDS_COORDINATOR', 'STATE_PRESIDENT', 'LG_PRESIDENT'].includes(role);
+}
+
+/**
+ * Can user suspend or activate member accounts?
+ */
+export function canManageAccountStatus(
+  actorRole: UserRole,
+  targetRole?: UserRole,
+  actorLgId?: string,
+  targetLgId?: string
+): boolean {
+  if (actorRole === 'CDS_COORDINATOR') return true;
+  if (actorRole === 'STATE_PRESIDENT' && targetRole !== 'CDS_COORDINATOR') return true;
+  if (actorRole === 'LG_PRESIDENT') {
+    // Can only manage accounts inside their own LG, and cannot suspend state executives or coordinator
+    const isSameLg = actorLgId && targetLgId && actorLgId === targetLgId;
+    const isSubordinate = targetRole === 'MEMBER' || targetRole === 'GROUP_LEADER' || targetRole === 'EXECUTIVE';
+    return Boolean(isSameLg && isSubordinate);
+  }
+  return false;
+}
+
+/**
+ * Can user change another member's role?
+ */
+export function canChangeMemberRole(actorRole: UserRole, targetRole?: UserRole): boolean {
+  if (actorRole === 'CDS_COORDINATOR') return true;
+  if (actorRole === 'STATE_PRESIDENT') {
+    return targetRole !== 'CDS_COORDINATOR';
+  }
+  return false;
+}
+
+/**
+ * Can user reassign a member to a different LG?
+ */
+export function canChangeMemberLG(actorRole: UserRole): boolean {
+  return actorRole === 'CDS_COORDINATOR';
+}

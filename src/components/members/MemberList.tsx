@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Activity, LocalGovernment, Member, MembershipStatus, Task, UserRole } from '../../types';
-import { isScopedToLG, ROLE_LABELS } from '../../utils/permissions';
+import { canRegisterMember, isScopedToLG, ROLE_LABELS } from '../../utils/permissions';
 import { EmptyState } from '../common/EmptyState';
 import { MemberCard } from '../common/MemberCard';
 import { SearchBar } from '../common/SearchBar';
 import { MemberDetailModal } from './MemberDetailModal';
 import { MemberFormModal } from './MemberFormModal';
-import { Plus, Users } from 'lucide-react';
+import { Plus, UserCheck, Users } from 'lucide-react';
 
 interface MemberListProps {
   members: Member[];
@@ -28,6 +28,7 @@ export const MemberList: React.FC<MemberListProps> = ({
 
   const [search, setSearch] = useState('');
   const [selectedLg, setSelectedLg] = useState('ALL');
+  const [selectedAccountStatus, setSelectedAccountStatus] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [selectedRole, setSelectedRole] = useState<string>('ALL');
 
@@ -42,7 +43,12 @@ export const MemberList: React.FC<MemberListProps> = ({
       if (isLGScoped && m.lgId !== currentUser.lgId) return false;
       if (!isLGScoped && selectedLg !== 'ALL' && m.lgId !== selectedLg) return false;
 
-      // Status
+      // Account Status (Pending, Active, Suspended)
+      if (selectedAccountStatus !== 'ALL' && (m.accountStatus || 'ACTIVE') !== selectedAccountStatus) {
+        return false;
+      }
+
+      // Membership Operational Status
       if (selectedStatus !== 'ALL' && m.membershipStatus !== selectedStatus) return false;
 
       // Role
@@ -55,7 +61,8 @@ export const MemberList: React.FC<MemberListProps> = ({
         const matchesEmail = m.email.toLowerCase().includes(q);
         const matchesPhone = m.phone.toLowerCase().includes(q);
         const matchesCode = (m.stateCode || '').toLowerCase().includes(q);
-        if (!matchesName && !matchesEmail && !matchesPhone && !matchesCode) {
+        const matchesInvite = (m.invitationCode || '').toLowerCase().includes(q);
+        if (!matchesName && !matchesEmail && !matchesPhone && !matchesCode && !matchesInvite) {
           return false;
         }
       }
@@ -67,12 +74,13 @@ export const MemberList: React.FC<MemberListProps> = ({
     isLGScoped,
     currentUser.lgId,
     selectedLg,
+    selectedAccountStatus,
     selectedStatus,
     selectedRole,
     search,
   ]);
 
-  const canAdd = currentRole !== 'MEMBER';
+  const canAdd = canRegisterMember(currentRole);
 
   return (
     <div className="space-y-4 sm:space-y-5">
@@ -83,7 +91,7 @@ export const MemberList: React.FC<MemberListProps> = ({
             Members Directory
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Corps members, group leaders, and executive officers across local chapters
+            Controlled registry of NYSC corps members, leaders, and executive personnel
           </p>
         </div>
 
@@ -93,8 +101,8 @@ export const MemberList: React.FC<MemberListProps> = ({
             onClick={() => setIsAddModalOpen(true)}
             className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors shrink-0"
           >
-            <Plus className="w-4 h-4" />
-            <span>Enroll New Member</span>
+            <UserCheck className="w-4 h-4" />
+            <span>Register & Invite Member</span>
           </button>
         )}
       </div>
@@ -104,7 +112,7 @@ export const MemberList: React.FC<MemberListProps> = ({
         <SearchBar
           value={search}
           onChange={setSearch}
-          placeholder="Search by name, state code, phone..."
+          placeholder="Search by name, state code, email, invite code..."
         />
 
         <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
@@ -124,14 +132,25 @@ export const MemberList: React.FC<MemberListProps> = ({
           )}
 
           <select
+            value={selectedAccountStatus}
+            onChange={(e) => setSelectedAccountStatus(e.target.value)}
+            className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-slate-700 font-bold"
+          >
+            <option value="ALL">All Account Access</option>
+            <option value="ACTIVE">Active Access</option>
+            <option value="PENDING">Pending Activation</option>
+            <option value="SUSPENDED">Suspended</option>
+          </select>
+
+          <select
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value)}
             className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-slate-700 font-medium"
           >
-            <option value="ALL">All Status</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
-            <option value="PENDING">Pending</option>
+            <option value="ALL">All Membership Status</option>
+            <option value="ACTIVE">Active Member</option>
+            <option value="INACTIVE">Inactive Member</option>
+            <option value="PENDING">Pending Member</option>
           </select>
 
           <select
@@ -176,6 +195,7 @@ export const MemberList: React.FC<MemberListProps> = ({
           onClose={() => setActiveMember(null)}
           tasks={tasks}
           activities={activities}
+          lgs={lgs}
         />
       )}
 

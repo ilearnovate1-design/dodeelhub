@@ -2,7 +2,8 @@ import React from 'react';
 import { Member } from '../../types';
 import { RoleBadge } from './RoleBadge';
 import { StatusBadge } from './StatusBadge';
-import { Mail, MapPin, Phone } from 'lucide-react';
+import { AccountStatusBadge } from './AccountStatusBadge';
+import { KeyRound, Mail, MapPin, Phone } from 'lucide-react';
 
 interface MemberCardProps {
   member: Member;
@@ -21,7 +22,13 @@ export const MemberCard: React.FC<MemberCardProps> = ({ member, onClick }) => {
           onClick(member);
         }
       }}
-      className="bg-white rounded-2xl border border-slate-200 hover:border-emerald-300 transition-all p-4 shadow-2xs cursor-pointer flex flex-col justify-between focus:outline-hidden focus:ring-2 focus:ring-emerald-500/40"
+      className={`bg-white rounded-2xl border transition-all p-4 shadow-2xs cursor-pointer flex flex-col justify-between focus:outline-hidden focus:ring-2 focus:ring-emerald-500/40 ${
+        member.accountStatus === 'SUSPENDED'
+          ? 'border-rose-200 bg-rose-50/20 hover:border-rose-300'
+          : member.accountStatus === 'PENDING'
+          ? 'border-amber-200 bg-amber-50/20 hover:border-amber-300'
+          : 'border-slate-200 hover:border-emerald-300'
+      }`}
     >
       <div>
         <div className="flex items-start justify-between gap-2 mb-2.5">
@@ -46,7 +53,10 @@ export const MemberCard: React.FC<MemberCardProps> = ({ member, onClick }) => {
             </div>
           </div>
 
-          <StatusBadge status={member.membershipStatus} size="sm" />
+          <div className="flex flex-col items-end gap-1">
+            <AccountStatusBadge status={member.accountStatus || 'ACTIVE'} size="sm" />
+            <StatusBadge status={member.membershipStatus} size="sm" />
+          </div>
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap my-2">
@@ -56,7 +66,22 @@ export const MemberCard: React.FC<MemberCardProps> = ({ member, onClick }) => {
               {member.stateCode}
             </span>
           )}
+          {member.assignedTeam && (
+            <span className="text-[10px] font-medium text-slate-500 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded">
+              {member.assignedTeam}
+            </span>
+          )}
         </div>
+
+        {member.accountStatus === 'PENDING' && member.invitationCode && (
+          <div className="my-2 p-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-900 flex items-center justify-between">
+            <span className="font-semibold flex items-center gap-1">
+              <KeyRound className="w-3 h-3 text-amber-600" />
+              <span>Invite Code:</span>
+            </span>
+            <span className="font-mono font-bold tracking-wider">{member.invitationCode}</span>
+          </div>
+        )}
 
         {member.skills && member.skills.length > 0 && (
           <div className="flex items-center gap-1 flex-wrap mt-2">

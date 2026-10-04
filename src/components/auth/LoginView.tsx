@@ -1,315 +1,444 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { dataService } from '../../services/dataService';
-import { LocalGovernment } from '../../types';
-import { isSuperAdminEmail } from '../../utils/permissions';
-import { Shield, Mail, Lock, LogIn, Sparkles, UserPlus, ArrowRight, Building2, KeyRound } from 'lucide-react';
+import { 
+  Shield, 
+  Mail, 
+  Lock, 
+  LogIn, 
+  Sparkles, 
+  KeyRound, 
+  CheckCircle2, 
+  AlertCircle, 
+  ArrowRight, 
+  ArrowLeft,
+  UserCheck,
+  Send,
+  Building2
+} from 'lucide-react';
+
+type AuthViewMode = 'LOGIN' | 'ACTIVATE' | 'FORGOT_PASSWORD';
 
 export const LoginView: React.FC = () => {
-  const { login, signup } = useAuth();
-  const [isSignup, setIsSignup] = useState(false);
+  const { login, activateAccount, sendPasswordReset } = useAuth();
+
+  const [mode, setMode] = useState<AuthViewMode>('LOGIN');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [selectedLgId, setSelectedLgId] = useState('');
-  const [lgs, setLgs] = useState<LocalGovernment[]>([]);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [invitationCode, setInvitationCode] = useState('');
+
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isForgotPassword, setIsForgotPassword] = useState(false);
-  const [resetEmail, setResetEmail] = useState('');
-  const [resetSent, setResetSent] = useState(false);
 
+  // Check URL query parameters for direct invitation links: ?activate=true&email=...&code=...
   useEffect(() => {
-    // Sync LGs for signup dropdown
-    const updateLgs = () => {
-      let list = dataService.getLGs();
-      // If live list is empty (not seeded yet), use INITIAL_LGS as fallback
-      // so new users can still sign up and "connect" to an LG
-      if (list.length === 0) {
-        import('../../services/mockData').then(m => {
-          setLgs(m.INITIAL_LGS);
-          if (!selectedLgId && m.INITIAL_LGS.length > 0) {
-            setSelectedLgId(m.INITIAL_LGS[0].id);
-          }
-        });
-      } else {
-        setLgs(list);
-        if (!selectedLgId && list.length > 0) {
-          setSelectedLgId(list[0].id);
-        }
-      }
-    };
-    updateLgs();
-    const unsubscribe = dataService.subscribe(updateLgs);
-    return unsubscribe;
-  }, [selectedLgId]);
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const isActivateParam = params.get('activate');
+      const emailParam = params.get('email');
+      const codeParam = params.get('code');
 
-  const handleSubmit = async (e: React.FormEvent) => {
+      if (isActivateParam === 'true' || codeParam) {
+        setMode('ACTIVATE');
+        if (emailParam) setEmail(emailParam);
+        if (codeParam) setInvitationCode(codeParam);
+      }
+    } catch {
+      // Ignore URL parsing errors
+    }
+  }, []);
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccessMessage('');
     setLoading(true);
 
     try {
-      if (isSignup) {
-        if (!fullName.trim()) throw new Error('Full name is required');
-        if (!selectedLgId) throw new Error('Please select a Local Government chapter');
-        
-        const lg = lgs.find(l => l.id === selectedLgId);
-        const isSuper = isSuperAdminEmail(email);
-        await signup(email, password, { 
-          fullName: fullName.trim(),
-          lgId: selectedLgId,
-          lgName: lg?.name || '',
-          role: isSuper ? 'CDS_COORDINATOR' : 'MEMBER'
-        });
-      } else {
-        await login(email, password);
-      }
+      await login(email, password);
     } catch (err: any) {
-      setError(err.message || 'Authentication failed. Please check your credentials.');
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+        setError('Invalid email or password. If you recently received an invitation, please click "Activate Account" below.');
+      } else {
+        setError(err.message || 'Authentication failed. Please verify your credentials.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResetPassword = (e: React.FormEvent) => {
+  const handleActivateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setResetSent(true);
-    setTimeout(() => {
-      setIsForgotPassword(false);
-      setResetSent(false);
-      setResetEmail('');
-    }, 3000);
+    setError('');
+    setSuccessMessage('');
+
+    if (!email.trim()) {
+      setError('Please provide the email address registered with your invitation.');
+      return;
+    }
+    if (!invitationCode.trim()) {
+      setError('Please enter your official DO-DEEL invitation code (e.g. DEEL-XXXXXX).');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Your new password must be at least 6 characters long.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match. Please verify both fields.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await activateAccount(email, invitationCode, password);
+      setSuccessMessage('Account activated successfully! Logging you in...');
+    } catch (err: any) {
+      setError(err.message || 'Failed to activate account. Please check your invitation code.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (isForgotPassword) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl border border-slate-100 p-8">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Shield className="w-8 h-8 text-emerald-600" />
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900">Reset Password</h1>
-            <p className="text-slate-500 text-sm mt-2">Enter your email to receive a reset link</p>
+  const handleResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMessage('');
+    setLoading(true);
+
+    try {
+      await sendPasswordReset(email);
+      setSuccessMessage('Password reset instructions sent. Please check your email inbox.');
+    } catch (err: any) {
+      // Security best practice: avoid account enumeration
+      setSuccessMessage('If an account exists for this email address, a password reset link has been dispatched.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 flex flex-col justify-center items-center p-4 sm:p-6 text-slate-800">
+      <div className="w-full max-w-md">
+        {/* Directorate Brand Header */}
+        <div className="text-center mb-6 text-white space-y-2">
+          <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl mb-1">
+            <Shield className="w-8 h-8 text-emerald-400" />
+          </div>
+          <h1 className="text-2xl font-black tracking-tight">DO-DEEL CDS Manager</h1>
+          <p className="text-xs text-slate-300 max-w-sm mx-auto leading-relaxed">
+            Digital Onboarders Directorate • Ondo State NYSC CDS Portal
+          </p>
+        </div>
+
+        {/* Controlled Access Notice Banner */}
+        <div className="bg-emerald-900/40 backdrop-blur-sm border border-emerald-500/30 text-emerald-200 text-[11px] p-3 rounded-2xl mb-4 text-center">
+          <p className="font-semibold">Controlled Membership Portal</p>
+          <p className="text-emerald-300/80 text-[10px] mt-0.5">
+            Access is managed by Local Government Presidents and the State Directorate.
+          </p>
+        </div>
+
+        {/* Main Card */}
+        <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 sm:p-8 space-y-5">
+          {/* Mode Switcher Tabs */}
+          <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-2xl text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => {
+                setMode('LOGIN');
+                setError('');
+                setSuccessMessage('');
+              }}
+              className={`py-2 rounded-xl transition-all ${
+                mode === 'LOGIN'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('ACTIVATE');
+                setError('');
+                setSuccessMessage('');
+              }}
+              className={`py-2 rounded-xl transition-all ${
+                mode === 'ACTIVATE'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Activate Account
+            </button>
           </div>
 
-          {resetSent ? (
-            <div className="bg-emerald-50 text-emerald-800 p-4 rounded-xl text-sm font-medium text-center">
-              Reset link sent! Please check your email inbox and follow the instructions.
+          {/* Feedback messages */}
+          {error && (
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-start gap-2 animate-in fade-in">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div className="leading-snug">{error}</div>
             </div>
-          ) : (
-            <form onSubmit={handleResetPassword} className="space-y-4">
+          )}
+
+          {successMessage && (
+            <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-800 flex items-start gap-2 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <div className="leading-snug">{successMessage}</div>
+            </div>
+          )}
+
+          {/* ----------------- MODE 1: LOGIN ----------------- */}
+          {mode === 'LOGIN' && (
+            <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5 uppercase tracking-wider">Email Address</label>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Registered Email Address
+                </label>
                 <div className="relative">
                   <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
                     type="email"
                     required
-                    value={resetEmail}
-                    onChange={(e) => setResetEmail(e.target.value)}
-                    placeholder="name@dodeel.org"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-10 pr-4 text-sm focus:ring-2 focus:ring-emerald-500 outline-hidden"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="member@dodeel.org"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-3.5 text-xs focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700">Password</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('FORGOT_PASSWORD');
+                      setError('');
+                      setSuccessMessage('');
+                    }}
+                    className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-3.5 text-xs focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                   />
                 </div>
               </div>
 
               <button
                 type="submit"
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-emerald-200"
+                disabled={loading}
+                className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold py-3 rounded-xl text-xs transition-all shadow-lg shadow-slate-200 flex items-center justify-center gap-2 group"
               >
-                Send Reset Link
+                <span>{loading ? 'Authenticating...' : 'Sign In to Portal'}</span>
+                {!loading && <LogIn className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />}
               </button>
 
-              <button
-                type="button"
-                onClick={() => setIsForgotPassword(false)}
-                className="w-full text-slate-500 hover:text-slate-700 text-sm font-semibold py-2"
-              >
-                Back to Login
-              </button>
+              {/* Invitation Help */}
+              <div className="text-center pt-2 border-t border-slate-100">
+                <p className="text-xs text-slate-500">
+                  New member awaiting first login?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('ACTIVATE');
+                      setError('');
+                      setSuccessMessage('');
+                    }}
+                    className="font-bold text-emerald-700 hover:underline"
+                  >
+                    Activate Invitation Code
+                  </button>
+                </p>
+              </div>
             </form>
           )}
-        </div>
-      </div>
-    );
-  }
 
-  return (
-    <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
-      {/* Left side - Branding */}
-      <div className="lg:w-1/2 bg-slate-900 p-12 flex flex-col justify-between relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 blur-3xl rounded-full -mr-48 -mt-48" />
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-emerald-500/10 blur-3xl rounded-full -ml-48 -mb-48" />
-        
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center">
-            <Shield className="w-6 h-6 text-white" />
-          </div>
-          <span className="text-2xl font-black text-white tracking-tighter">DO-DEEL CDS</span>
-        </div>
+          {/* ----------------- MODE 2: ACTIVATE ACCOUNT ----------------- */}
+          {mode === 'ACTIVATE' && (
+            <form onSubmit={handleActivateSubmit} className="space-y-4">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-900 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <UserCheck className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <span>Activate Authorized Membership</span>
+                </p>
+                <p className="text-[11px] text-emerald-800 leading-relaxed">
+                  Enter your registered email and the activation code provided by your Local Government President or CDS Coordinator to set your private password.
+                </p>
+              </div>
 
-        <div className="relative z-10 max-w-lg">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 rounded-full border border-emerald-500/30 mb-6">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-widest">Ondo State NYSC Directorate</span>
-          </div>
-          <h2 className="text-4xl lg:text-5xl font-bold text-white leading-tight mb-6">
-            Accountability Engine & <span className="text-emerald-500">Growth Hub</span>
-          </h2>
-          <p className="text-slate-400 text-lg leading-relaxed">
-            The official management portal for Digital Onboarders CDS. Track responsibilities, evidence community impact, and grow as a digital leader.
-          </p>
-        </div>
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Your Registered Email Address <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="e.g. member@dodeel.org"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-3.5 text-xs focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
 
-        <div className="relative z-10 text-slate-500 text-sm font-medium">
-          &copy; 2026 DO-DEEL CDS Manager. All Rights Reserved.
-        </div>
-      </div>
-
-      {/* Right side - Form */}
-      <div className="lg:w-1/2 flex items-center justify-center p-6 sm:p-12">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl border border-slate-100 p-8 sm:p-10">
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold text-slate-900">{isSignup ? 'Create Account' : 'Sign In'}</h1>
-            <p className="text-slate-500 text-sm mt-1">
-              {isSignup ? 'Enroll as a new DO-DEEL participant' : 'Enter your credentials to access your dashboard'}
-            </p>
-          </div>
-
-          {error && (
-            <div className="bg-rose-50 border border-rose-100 text-rose-700 p-3.5 rounded-xl text-xs font-bold mb-6 flex items-center gap-2">
-              <div className="w-1.5 h-1.5 bg-rose-500 rounded-full shrink-0 animate-pulse" />
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {isSignup && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1.5 uppercase tracking-wider">Full Name</label>
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Activation Code / Invitation Token <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
                     type="text"
                     required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="e.g. Daniel Babajide"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm focus:ring-2 focus:ring-emerald-500 outline-hidden transition-all"
+                    value={invitationCode}
+                    onChange={(e) => setInvitationCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. DEEL-K89M2A"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-3.5 text-xs font-mono uppercase tracking-wider focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                   />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Invitation tokens are issued by your Local Government President or State CDS Coordinator.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Create Password <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Min 6 characters"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-3.5 text-xs focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1.5 uppercase tracking-wider">LG Chapter</label>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Confirm Password <span className="text-rose-500">*</span>
+                  </label>
                   <div className="relative">
-                    <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <select
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="password"
                       required
-                      value={selectedLgId}
-                      onChange={(e) => setSelectedLgId(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-10 pr-4 text-sm focus:ring-2 focus:ring-emerald-500 outline-hidden transition-all appearance-none"
-                    >
-                      <option value="" disabled>Select your LG</option>
-                      {lgs.map(lg => (
-                        <option key={lg.id} value={lg.id}>{lg.name}</option>
-                      ))}
-                    </select>
+                      minLength={6}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Re-enter password"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-3.5 text-xs focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                    />
                   </div>
                 </div>
               </div>
-            )}
 
-            <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1.5 uppercase tracking-wider">Email Address</label>
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@dodeel.org"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-10 pr-4 text-sm focus:ring-2 focus:ring-emerald-500 outline-hidden transition-all"
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Password</label>
-                {!isSignup && (
-                  <button
-                    type="button"
-                    onClick={() => setIsForgotPassword(true)}
-                    className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 uppercase tracking-wider"
-                  >
-                    Forgot?
-                  </button>
-                )}
-              </div>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-10 pr-4 text-sm focus:ring-2 focus:ring-emerald-500 outline-hidden transition-all"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold py-3.5 rounded-xl transition-all shadow-xl shadow-slate-200 flex items-center justify-center gap-2 group"
-            >
-              <span>{loading ? 'Processing...' : (isSignup ? 'Create Account' : 'Sign In to Dashboard')}</span>
-              {!loading && (isSignup ? <UserPlus className="w-4 h-4" /> : <LogIn className="w-4 h-4 group-hover:translate-x-1 transition-transform" />)}
-            </button>
-          </form>
-
-          {/* Quick Super Admin demo credentials helper */}
-          {!isSignup && (
-            <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs flex items-center justify-between">
-              <div className="min-w-0 pr-2">
-                <div className="flex items-center gap-1.5 font-bold text-slate-800 text-[11px]">
-                  <KeyRound className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                  <span>Super Admin Portal:</span>
-                </div>
-                <span className="text-[11px] text-slate-500 font-mono truncate block mt-0.5">
-                  kolawoles445@gmail.com
-                </span>
-              </div>
               <button
-                type="button"
-                onClick={() => {
-                  setEmail('kolawoles445@gmail.com');
-                  setPassword('password123');
-                }}
-                className="text-[11px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-2.5 py-1.5 rounded-lg transition-colors shrink-0"
+                type="submit"
+                disabled={loading}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white font-bold py-3 rounded-xl text-xs transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2"
               >
-                Autofill
+                <span>{loading ? 'Activating Account...' : 'Set Password & Activate Account'}</span>
+                {!loading && <CheckCircle2 className="w-4 h-4" />}
               </button>
-            </div>
+
+              <div className="text-center pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('LOGIN');
+                    setError('');
+                    setSuccessMessage('');
+                  }}
+                  className="text-xs font-semibold text-slate-600 hover:text-slate-900 inline-flex items-center gap-1.5"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Already activated? Back to Sign In</span>
+                </button>
+              </div>
+            </form>
           )}
 
-          <div className="mt-6 text-center">
-            <button
-              type="button"
-              onClick={() => setIsSignup(!isSignup)}
-              className="text-xs font-semibold text-slate-600 hover:text-slate-900 inline-flex items-center gap-1.5"
-            >
-              {isSignup ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
-              <ArrowRight className="w-3 h-3" />
-            </button>
-          </div>
+          {/* ----------------- MODE 3: FORGOT PASSWORD ----------------- */}
+          {mode === 'FORGOT_PASSWORD' && (
+            <form onSubmit={handleResetSubmit} className="space-y-4">
+              <div className="text-center space-y-1">
+                <h3 className="text-sm font-bold text-slate-900">Reset Your Password</h3>
+                <p className="text-xs text-slate-500">
+                  Enter your registered email address to receive Firebase password recovery instructions.
+                </p>
+              </div>
 
-          <div className="mt-8 pt-8 border-t border-slate-100">
-            <p className="text-[10px] text-slate-400 text-center uppercase tracking-widest leading-relaxed">
-              Authorized NYSC DO-DEEL Personnel Only
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Account Email Address
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@dodeel.org"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-3.5 text-xs focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white font-bold py-3 rounded-xl text-xs transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2"
+              >
+                <span>{loading ? 'Sending...' : 'Send Password Reset Link'}</span>
+                {!loading && <Send className="w-4 h-4" />}
+              </button>
+
+              <div className="text-center pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('LOGIN');
+                    setError('');
+                    setSuccessMessage('');
+                  }}
+                  className="text-xs font-semibold text-slate-600 hover:text-slate-900 inline-flex items-center gap-1.5"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back to Sign In</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Footer Notice */}
+          <div className="pt-2 border-t border-slate-100 text-center">
+            <p className="text-[10px] text-slate-400 uppercase tracking-widest leading-relaxed">
+              Ondo State NYSC Community Development Service
             </p>
           </div>
         </div>

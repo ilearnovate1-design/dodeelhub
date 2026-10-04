@@ -3,6 +3,7 @@ import {
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signOut,
   User as FirebaseUser
 } from 'firebase/auth';
@@ -14,9 +15,11 @@ import { isSuperAdminEmail, ROLE_LABELS } from '../utils/permissions';
 interface AuthContextType {
   currentUser: Member | null;
   currentRole: UserRole;
+  isSuspended: boolean;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, userData: Partial<Member>) => Promise<void>;
+  activateAccount: (email: string, invitationCode: string, password: string) => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   switchRole: (role: UserRole) => void;
   switchUser: (userId: string) => void;
@@ -86,10 +89,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // If user is super admin, enforce CDS_COORDINATOR role and supply super admin defaults if member doc is loading
   const currentUser: Member | null = matchedUser
-    ? (isSuperAdmin ? { ...matchedUser, role: 'CDS_COORDINATOR' } : matchedUser)
+    ? (isSuperAdmin ? { ...matchedUser, role: 'CDS_COORDINATOR', accountStatus: 'ACTIVE' } : matchedUser)
     : (firebaseUser && isSuperAdmin
         ? {
             id: firebaseUser.uid,
+            uid: firebaseUser.uid,
             fullName: firebaseUser.displayName || 'Kolawole (Super Admin)',
             email: firebaseUser.email?.toLowerCase() || 'kolawoles445@gmail.com',
             phone: '+234 800 000 0001',
@@ -98,6 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             state: 'Ondo State',
             role: 'CDS_COORDINATOR',
             membershipStatus: 'ACTIVE',
+            accountStatus: 'ACTIVE',
             dateJoined: '2026-10-01',
             skills: ['System Administration', 'Strategic Governance', 'Directorate Oversight'],
             bio: 'Super Administrator & State CDS Coordinator with complete system oversight and executive authority.',
@@ -105,36 +110,65 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         : null);
 
+  const isSuspended = Boolean(currentUser && currentUser.accountStatus === 'SUSPENDED' && !isSuperAdmin);
   const currentRole: UserRole = isSuperAdmin ? 'CDS_COORDINATOR' : (currentUser?.role || 'MEMBER');
 
   const login = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    const cred = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+    // If the account in Firestore is suspended, we still let them sign in to show the suspension state
+    if (cred.user) {
+      const doc = await dataService.getMemberByIdAsync(cred.user.uid);
+      if (doc && doc.accountStatus === 'SUSPENDED' && !isSuperAdminEmail(cred.user.email)) {
+        console.warn('Suspended user logged in:', cred.user.email);
+      }
+    }
   };
 
-  const signup = async (email: string, password: string, userData: Partial<Member>) => {
-    const { user } = await createUserWithEmailAndPassword(auth, email, password);
-    const normalizedEmail = email.toLowerCase().trim();
-    const isSuper = isSuperAdminEmail(normalizedEmail);
-    const role: UserRole = isSuper ? 'CDS_COORDINATOR' : ((userData.role as UserRole) || 'MEMBER');
+  /**
+   * Controlled Member Activation Flow:
+   * Validates invitation code, creates Firebase Auth credentials, and activates Firestore profile
+   */
+  const activateAccount = async (email: string, invitationCode: string, password: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedCode = invitationCode.trim().toUpperCase();
 
-    const newMember: Member = {
-      ...userData,
-      id: user.uid,
-      fullName: userData.fullName || (isSuper ? 'Kolawole (Super Admin)' : ''),
-      email: normalizedEmail,
-      phone: userData.phone || '+234 800 000 0001',
-      lgId: userData.lgId || 'lg-akure',
-      lgName: userData.lgName || 'Ondo State NYSC Directorate (Akure)',
-      state: userData.state || 'Ondo State',
-      role,
-      membershipStatus: 'ACTIVE',
-      dateJoined: new Date().toISOString().split('T')[0],
-      requiresProfileUpdate: !isSuper,
-      skills: isSuper ? ['System Administration', 'Strategic Governance', 'Directorate Oversight'] : [],
-      bio: isSuper ? 'Super Administrator & State CDS Coordinator with complete system oversight and executive authority.' : '',
-      assignedTeam: isSuper ? 'State Directorate' : undefined,
-    } as Member;
-    await dataService.saveMemberAsync(newMember);
+    // 1. Verify invitation validity
+    const pending = dataService.findPendingMemberByInvite(normalizedEmail, normalizedCode);
+    if (!pending && !isSuperAdminEmail(normalizedEmail)) {
+      // Also check if user exists in Firestore directly
+      const candidate = members.find(m => m.email.toLowerCase() === normalizedEmail);
+      if (candidate && candidate.accountStatus === 'ACTIVE') {
+        throw new Error('This account has already been activated. Please sign in with your email and password.');
+      }
+      if (candidate && candidate.accountStatus === 'SUSPENDED') {
+        throw new Error('This account is suspended. Please contact your Local Government President or CDS Coordinator.');
+      }
+      throw new Error('Invalid invitation code or email. Please check your invitation message or contact your LG President.');
+    }
+
+    // 2. Create the member's Firebase Authentication account (passwords handled strictly by Firebase Auth!)
+    let userCredential;
+    try {
+      userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+    } catch (authError: any) {
+      if (authError.code === 'auth/email-already-in-use') {
+        // If already exists in Firebase Auth, attempt sign-in to complete profile link
+        try {
+          userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+        } catch {
+          throw new Error('An account with this email already exists in authentication. If you forgot your password, please use the "Forgot Password" link.');
+        }
+      } else {
+        throw authError;
+      }
+    }
+
+    // 3. Connect Firebase UID with the member profile & set account status to ACTIVE
+    await dataService.activateMemberAccountAsync(normalizedEmail, normalizedCode, userCredential.user.uid);
+  };
+
+  const sendPasswordReset = async (email: string) => {
+    await sendPasswordResetEmail(auth, email.trim().toLowerCase());
   };
 
   const logout = async () => {
@@ -153,7 +187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateCurrentUserProfile = async (updates: Partial<Member>) => {
     if (currentUser) {
-      const updated = { ...currentUser, ...updates };
+      const updated = { ...currentUser, ...updates, updatedAt: new Date().toISOString() };
       await dataService.saveMemberAsync(updated);
     }
   };
@@ -169,9 +203,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         currentUser,
         currentRole,
+        isSuspended,
         loading,
         login,
-        signup,
+        activateAccount,
+        sendPasswordReset,
         logout,
         switchRole,
         switchUser,
