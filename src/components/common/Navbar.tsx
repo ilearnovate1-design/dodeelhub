@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { isLeadershipRole, ROLE_LABELS } from '../../utils/permissions';
 import { RoleBadge } from './RoleBadge';
-import { RoleSwitcherModal } from './RoleSwitcherModal';
 import {
   BookOpen,
   Calendar,
@@ -12,10 +11,10 @@ import {
   FolderLock,
   LayoutDashboard,
   Menu,
-  RotateCw,
   Shield,
   TrendingUp,
   User,
+  LogOut,
   UserCheck,
   Users,
   X,
@@ -24,15 +23,13 @@ import {
 interface NavbarProps {
   currentTab: string;
   onSelectTab: (tab: string) => void;
-  onOpenRoleSwitcher?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentTab,
   onSelectTab,
-  onOpenRoleSwitcher,
 }) => {
-  const { currentUser, currentRole } = useAuth();
+  const { currentUser, currentRole, logout } = useAuth();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
@@ -50,7 +47,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   if (!currentUser) return null;
 
-  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Compute strictly role-tailored navigation modules per user brief
@@ -102,14 +98,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   const handleNavClick = (id: string) => {
     onSelectTab(id);
     setIsMobileMenuOpen(false);
-  };
-
-  const handleOpenRoleModal = () => {
-    if (onOpenRoleSwitcher) {
-      onOpenRoleSwitcher();
-    } else {
-      setIsRoleModalOpen(true);
-    }
   };
 
   return (
@@ -167,7 +155,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               })}
             </nav>
 
-            {/* Role Persona Switcher & Mobile Menu Trigger */}
+            {/* Authoritative Role Badge & Mobile Menu Trigger */}
             <div className="flex items-center gap-2">
               {!isOnline && (
                 <div 
@@ -179,18 +167,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               )}
               
+              <div 
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-xl"
+                title={`Logged in as ${ROLE_LABELS[currentRole]}`}
+              >
+                <RoleBadge role={currentRole} size="sm" />
+              </div>
+
+              {/* Desktop Logout */}
               <button
                 type="button"
-                onClick={handleOpenRoleModal}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 transition-colors shadow-2xs"
-                title="Switch persona for testing"
-                aria-label={`Current Role: ${ROLE_LABELS[currentRole]}. Click to switch.`}
+                onClick={logout}
+                className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold border border-rose-200 transition-colors"
               >
-                <RotateCw className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
-                <span className="hidden sm:inline text-slate-500 font-normal">Role:</span>
-                <span className="font-bold text-slate-900 max-w-[110px] sm:max-w-[150px] truncate">
-                  {ROLE_LABELS[currentRole]}
-                </span>
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Logout</span>
               </button>
 
               {/* Mobile Menu Hamburger */}
@@ -221,16 +212,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <p className="text-[11px] text-slate-500 truncate">{currentUser.lgName}</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsMobileMenuOpen(false);
-                  handleOpenRoleModal();
-                }}
-                className="text-xs text-emerald-700 font-bold bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200 shrink-0"
-              >
-                Switch Role
-              </button>
+              <RoleBadge role={currentRole} size="sm" />
             </div>
 
             {/* Menu Buttons */}
@@ -254,16 +236,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </button>
                 );
               })}
+
+              <button
+                type="button"
+                onClick={logout}
+                className="flex items-center gap-2 p-2.5 rounded-xl text-left text-xs font-bold transition-all min-h-[44px] bg-rose-50 text-rose-700 border border-rose-100"
+              >
+                <LogOut className="w-4 h-4 shrink-0" aria-hidden="true" />
+                <span>Logout</span>
+              </button>
             </div>
           </div>
         )}
       </header>
-
-      {/* Role Switcher Modal */}
-      <RoleSwitcherModal
-        isOpen={isRoleModalOpen}
-        onClose={() => setIsRoleModalOpen(false)}
-      />
     </>
   );
 };

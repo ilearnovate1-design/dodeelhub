@@ -414,19 +414,19 @@ class DataService {
     console.log(`Super Admin status secured for ${normalizedEmail} (ID: ${targetId})`);
   }
 
-  public generateInvitationCode(): string {
+  public generateInvitationCode = (): string => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let randomPart = '';
     for (let i = 0; i < 6; i++) {
       randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return `DEEL-${randomPart}`;
-  }
+  };
 
-  public async inviteMemberAsync(
+  public inviteMemberAsync = async (
     data: Omit<Member, 'id' | 'accountStatus' | 'invitationCode'>,
     invitedByName = 'Administrator'
-  ): Promise<Member> {
+  ): Promise<Member> => {
     const normalizedEmail = data.email.toLowerCase().trim();
     const invitationCode = this.generateInvitationCode();
     const docId = `invite-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -447,7 +447,7 @@ class DataService {
 
     await this.saveMemberAsync(newMember);
     return newMember;
-  }
+  };
 
   public findPendingMemberByInvite(email: string, code: string): Member | undefined {
     const normalizedEmail = email.toLowerCase().trim();
@@ -560,7 +560,7 @@ class DataService {
     } catch {}
   }
 
-  public async resendInvitationAsync(memberId: string): Promise<{ invitationCode: string }> {
+  public resendInvitationAsync = async (memberId: string): Promise<{ invitationCode: string }> => {
     const invitationCode = this.generateInvitationCode();
     await updateDoc(doc(db, 'members', memberId), {
       invitationCode,
@@ -577,7 +577,7 @@ class DataService {
       });
     } catch {}
     return { invitationCode };
-  }
+  };
 
   public async updateMemberRoleAsync(memberId: string, role: UserRole): Promise<void> {
     await updateDoc(doc(db, 'members', memberId), {

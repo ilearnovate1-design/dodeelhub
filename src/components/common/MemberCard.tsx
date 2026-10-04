@@ -73,13 +73,15 @@ export const MemberCard: React.FC<MemberCardProps> = ({ member, onClick }) => {
           )}
         </div>
 
-        {member.accountStatus === 'PENDING' && member.invitationCode && (
-          <div className="my-2 p-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-900 flex items-center justify-between">
-            <span className="font-semibold flex items-center gap-1">
-              <KeyRound className="w-3 h-3 text-amber-600" />
-              <span>Invite Code:</span>
+        {member.accountStatus === 'PENDING' && (
+          <div className="my-2 p-2.5 bg-amber-50 border-2 border-dashed border-amber-300 rounded-xl text-[10px] text-amber-900 flex items-center justify-between shadow-xs">
+            <div className="flex items-center gap-1.5">
+              <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+              <span className="font-bold uppercase tracking-tight">Activation Token</span>
+            </div>
+            <span className="font-mono font-black text-sm tracking-widest bg-white px-2 py-0.5 rounded border border-amber-200">
+              {member.invitationCode || 'MISSING'}
             </span>
-            <span className="font-mono font-bold tracking-wider">{member.invitationCode}</span>
           </div>
         )}
 

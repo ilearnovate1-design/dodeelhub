@@ -3,7 +3,6 @@ import { ActivityList } from './components/activities/ActivityList';
 import { AdminPanel } from './components/admin/AdminPanel';
 import { BottomNav } from './components/common/BottomNav';
 import { Navbar } from './components/common/Navbar';
-import { RoleSwitcherModal } from './components/common/RoleSwitcherModal';
 import { AccountabilityDashboard } from './components/dashboard/AccountabilityDashboard';
 import { DashboardRouter } from './components/dashboard/DashboardRouter';
 import { GrowthDashboard } from './components/dashboard/GrowthDashboard';
@@ -72,7 +71,6 @@ const MainApp: React.FC = () => {
   // Global modals
   const [isTaskCreateOpen, setIsTaskCreateOpen] = useState(false);
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
-  const [isRoleSwitcherOpen, setIsRoleSwitcherOpen] = useState(false);
 
   // Production Environment Initialization & Reactive Sync
   useEffect(() => {
@@ -305,7 +303,6 @@ const MainApp: React.FC = () => {
           <ProfileView
             tasks={tasks}
             activities={activities}
-            onOpenRoleSwitcher={() => setIsRoleSwitcherOpen(true)}
           />
         )}
 
@@ -341,12 +338,6 @@ const MainApp: React.FC = () => {
         onClose={() => setIsTaskCreateOpen(false)}
         members={members}
         lgs={lgs}
-      />
-
-      {/* Role Switcher Modal */}
-      <RoleSwitcherModal
-        isOpen={isRoleSwitcherOpen}
-        onClose={() => setIsRoleSwitcherOpen(false)}
       />
 
       {/* Mobile Bottom Navigation */}

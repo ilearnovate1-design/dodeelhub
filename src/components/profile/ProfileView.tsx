@@ -16,7 +16,6 @@ import {
   Mail,
   MapPin,
   Phone,
-  RotateCw,
   Save,
   Shield,
   User,
@@ -26,13 +25,11 @@ import {
 interface ProfileViewProps {
   tasks: Task[];
   activities: Activity[];
-  onOpenRoleSwitcher: () => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
   tasks,
   activities,
-  onOpenRoleSwitcher,
 }) => {
   const { currentUser, updateCurrentUserProfile, logout } = useAuth();
 
@@ -134,16 +131,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             <div className="flex items-center gap-2 self-start sm:self-auto">
-              <button
-                type="button"
-                onClick={onOpenRoleSwitcher}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold border border-slate-200 transition-colors"
-                title="Switch persona for testing"
-              >
-                <RotateCw className="w-3.5 h-3.5 text-slate-500" />
-                <span>Switch Role</span>
-              </button>
-
               <button
                 type="button"
                 onClick={logout}

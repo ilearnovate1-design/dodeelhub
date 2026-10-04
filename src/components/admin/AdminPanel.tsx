@@ -530,9 +530,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ members, lgs, settings }
                             <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-400 font-mono">
                               <span>{m.phone}</span>
                               {m.stateCode && <span>• {m.stateCode}</span>}
-                              {m.invitationCode && m.accountStatus === 'PENDING' && (
-                                <span className="text-amber-700 bg-amber-50 px-1 py-0.2 rounded font-bold">
-                                  Token: {m.invitationCode}
+                              {m.accountStatus === 'PENDING' && (
+                                <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-black font-mono mt-1 ring-1 ring-amber-500/20">
+                                  <KeyRound className="w-2.5 h-2.5" />
+                                  {m.invitationCode || 'MISSING'}
                                 </span>
                               )}
                             </div>
