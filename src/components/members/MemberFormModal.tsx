@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 import { dataService } from '../../services/dataService';
 import { LocalGovernment, Member, MembershipStatus, UserRole } from '../../types';
-import { ROLE_LABELS } from '../../utils/permissions';
+import { isScopedToLG, ROLE_LABELS } from '../../utils/permissions';
 import { Modal } from '../common/Modal';
 
 interface MemberFormModalProps {
@@ -11,12 +12,14 @@ interface MemberFormModalProps {
 }
 
 export const MemberFormModal: React.FC<MemberFormModalProps> = ({ isOpen, onClose, lgs }) => {
+  const { currentUser, currentRole } = useAuth();
   const settings = dataService.getSettings();
+  const isLGScoped = isScopedToLG(currentRole);
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('+234 ');
-  const [lgId, setLgId] = useState(lgs[0]?.id || 'lg-akure');
+  const [lgId, setLgId] = useState('');
   const [role, setRole] = useState<UserRole>('MEMBER');
   const [membershipStatus, setMembershipStatus] = useState<MembershipStatus>('ACTIVE');
   const [stateCode, setStateCode] = useState('OD/26A/');
@@ -27,7 +30,16 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({ isOpen, onClos
   const [skillsStr, setSkillsStr] = useState('Digital Literacy, Canva, Google Docs');
   const [bio, setBio] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Handle LG Scoping
+  useEffect(() => {
+    if (isLGScoped && currentUser) {
+      setLgId(currentUser.lgId);
+    } else if (lgs.length > 0 && !lgId) {
+      setLgId(lgs[0].id);
+    }
+  }, [isLGScoped, currentUser, lgs, lgId]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName.trim() || !email.trim()) return;
 
@@ -59,7 +71,7 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({ isOpen, onClos
       requiresProfileUpdate: true,
     };
 
-    dataService.saveMember(newMember);
+    await dataService.saveMemberAsync(newMember);
     onClose();
     // Reset
     setFullName('');
@@ -135,7 +147,8 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({ isOpen, onClos
             <select
               value={lgId}
               onChange={(e) => setLgId(e.target.value)}
-              className="w-full text-xs bg-white border border-slate-300 rounded-xl p-2.5 focus:ring-1 focus:ring-emerald-500"
+              disabled={isLGScoped}
+              className={`w-full text-xs bg-white border border-slate-300 rounded-xl p-2.5 focus:ring-1 focus:ring-emerald-500 ${isLGScoped ? 'opacity-70 bg-slate-50' : ''}`}
             >
               {lgs.map((l) => (
                 <option key={l.id} value={l.id}>

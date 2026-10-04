@@ -43,22 +43,22 @@ import {
 } from 'lucide-react';
 
 const MainApp: React.FC = () => {
-  const { currentUser, currentRole } = useAuth();
+  const { currentUser, currentRole, loading } = useAuth();
 
   // Primary state
-  const [tasks, setTasks] = useState<Task[]>(() => dataService.getTasks());
-  const [activities, setActivities] = useState<Activity[]>(() => dataService.getActivities());
-  const [documents, setDocuments] = useState<CDSDocument[]>(() => dataService.getDocuments());
-  const [learning, setLearning] = useState<LearningResource[]>(() => dataService.getLearning());
-  const [members, setMembers] = useState<Member[]>(() => dataService.getMembers());
-  const [reports, setReports] = useState<MonthlyReport[]>(() => dataService.getReports());
-  const [lgs, setLgs] = useState<LocalGovernment[]>(() => dataService.getLGs());
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [documents, setDocuments] = useState<CDSDocument[]>([]);
+  const [learning, setLearning] = useState<LearningResource[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [reports, setReports] = useState<MonthlyReport[]>([]);
+  const [lgs, setLgs] = useState<LocalGovernment[]>([]);
   const [settings, setSettings] = useState(() => dataService.getSettings());
 
   // Navigation & filter state
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
 
-  // ... rest of state ...
+  // ... global modal states ...
   const [tasksStatusFilter, setTasksStatusFilter] = useState<string>('ALL');
   const [selectedTaskForModal, setSelectedTaskForModal] = useState<Task | null>(null);
   const [selectedReportForModal, setSelectedReportForModal] = useState<MonthlyReport | null>(null);
@@ -73,7 +73,19 @@ const MainApp: React.FC = () => {
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [isRoleSwitcherOpen, setIsRoleSwitcherOpen] = useState(false);
 
-  // Subscribe to reactive data service
+  // Initial Data Seeding & Reactive Sync
+  useEffect(() => {
+    const init = async () => {
+      // Only attempt to seed if we have a user and they are a coordinator
+      // This prevents unauthenticated write errors on first load
+      if (currentUser && canAccessAdmin(currentRole)) {
+        await dataService.seedInitialData();
+        await dataService.ensureSuperAdminUser('kolawoles445@gmail.com', 'Kolawole (Super Admin)', 'user-kolawole');
+      }
+    };
+    init();
+  }, [currentUser, currentRole]);
+
   useEffect(() => {
     const unsubscribe = dataService.subscribe(() => {
       setTasks(dataService.getTasks());
@@ -107,6 +119,17 @@ const MainApp: React.FC = () => {
       }
     }
   }, [currentRole, currentTab]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm font-bold text-slate-600">Syncing with State Directorate...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return <LoginView />;

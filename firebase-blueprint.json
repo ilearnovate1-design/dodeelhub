@@ -1,86 +1,44 @@
 {
   "entities": {
-    "User": {
-      "title": "User",
-      "description": "User account containing identity and assigned operational role",
+    "Member": {
+      "title": "CDS Member",
+      "description": "Information about a CDS member, including their role, LG, and contact details.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
         "fullName": { "type": "string" },
         "email": { "type": "string" },
         "phone": { "type": "string" },
         "lgId": { "type": "string" },
         "lgName": { "type": "string" },
         "state": { "type": "string" },
-        "role": {
-          "type": "string",
-          "enum": [
-            "CDS_COORDINATOR",
-            "STATE_PRESIDENT",
-            "VP_GROWTH",
-            "VP_ACCOUNTABILITY",
-            "VP_COMMUNITY_IMPACT",
-            "LG_PRESIDENT",
-            "EXECUTIVE",
-            "GROUP_LEADER",
-            "MEMBER"
-          ]
-        },
-        "membershipStatus": {
-          "type": "string",
-          "enum": ["ACTIVE", "INACTIVE", "PENDING"]
-        },
-        "stateCode": { "type": "string" },
-        "callUpNo": { "type": "string" },
-        "profilePhoto": { "type": "string" },
-        "bio": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" },
-        "createdBy": { "type": "string" }
-      },
-      "required": ["id", "fullName", "email", "lgId", "role", "membershipStatus", "createdAt", "updatedAt", "createdBy"]
-    },
-    "UserProfilePublic": {
-      "title": "UserProfilePublic",
-      "description": "Non-sensitive user directory profile visible to members of the same chapter",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "fullName": { "type": "string" },
-        "lgId": { "type": "string" },
-        "lgName": { "type": "string" },
         "role": { "type": "string" },
         "membershipStatus": { "type": "string" },
-        "profilePhoto": { "type": "string" }
-      },
-      "required": ["id", "fullName", "lgId", "role", "membershipStatus"]
-    },
-    "LocalGovernment": {
-      "title": "LocalGovernment",
-      "description": "Local Government area chapter of DO-DEEL CDS",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "state": { "type": "string" },
-        "presidentId": { "type": "string" },
-        "presidentName": { "type": "string" },
-        "meetingVenue": { "type": "string" },
-        "meetingDay": { "type": "string" },
-        "activeMemberCount": { "type": "number" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" },
+        "dateJoined": { "type": "string" },
+        "profilePhoto": { "type": "string" },
+        "skills": { "type": "array" },
+        "callUpNo": { "type": "string" },
+        "stateCode": { "type": "string" },
+        "operationalBatch": { "type": "string" },
+        "bio": { "type": "string" },
+        "assignedTeam": { "type": "string" },
+        "fcmbAccount": { "type": "string" },
+        "ppaName": { "type": "string" },
+        "ppaAddress": { "type": "string" },
+        "requiresProfileUpdate": { "type": "boolean" },
+        "lastLogin": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
         "createdBy": { "type": "string" }
       },
-      "required": ["id", "name", "state", "createdAt", "updatedAt", "createdBy"]
+      "required": ["fullName", "email", "lgId", "role", "membershipStatus"]
     },
     "Task": {
-      "title": "Task",
-      "description": "Responsibility or KPI task assigned within DO-DEEL CDS",
+      "title": "Task / Responsibility",
+      "description": "An assigned task or responsibility for a member.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
         "title": { "type": "string" },
+        "responsibility": { "type": "string" },
         "description": { "type": "string" },
         "assignedTo": { "type": "string" },
         "assignedToName": { "type": "string" },
@@ -91,306 +49,194 @@
         "assignedLGName": { "type": "string" },
         "team": { "type": "string" },
         "kpi": { "type": "string" },
-        "priority": {
-          "type": "string",
-          "enum": ["LOW", "MEDIUM", "HIGH"]
-        },
+        "priority": { "type": "string" },
         "startDate": { "type": "string" },
         "deadline": { "type": "string" },
-        "status": {
-          "type": "string",
-          "enum": ["NOT_STARTED", "IN_PROGRESS", "COMPLETED", "OVERDUE"]
-        },
-        "manualProgress": {
-          "type": "string",
-          "enum": ["NOT_STARTED", "IN_PROGRESS", "COMPLETED"]
-        },
+        "manualProgress": { "type": "string" },
+        "status": { "type": "string" },
         "completedAt": { "type": "string" },
         "result": { "type": "string" },
         "hasEvidence": { "type": "boolean" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
         "createdBy": { "type": "string" }
       },
-      "required": ["id", "title", "description", "assignedTo", "assignedBy", "assignedLG", "kpi", "priority", "deadline", "manualProgress", "createdAt", "updatedAt", "createdBy"]
-    },
-    "TaskUpdate": {
-      "title": "TaskUpdate",
-      "description": "Progress note, status change or review comment on a task",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "taskId": { "type": "string" },
-        "authorId": { "type": "string" },
-        "authorName": { "type": "string" },
-        "authorRole": { "type": "string" },
-        "text": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" },
-        "createdBy": { "type": "string" }
-      },
-      "required": ["id", "taskId", "authorId", "authorName", "text", "createdAt", "updatedAt", "createdBy"]
-    },
-    "Evidence": {
-      "title": "Evidence",
-      "description": "Documented proof of task or activity execution",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "taskId": { "type": "string" },
-        "type": {
-          "type": "string",
-          "enum": ["IMAGE", "PDF", "DOCUMENT", "URL", "SOCIAL_URL", "DESCRIPTION"]
-        },
-        "url": { "type": "string" },
-        "description": { "type": "string" },
-        "submittedBy": { "type": "string" },
-        "submittedByName": { "type": "string" },
-        "submittedAt": { "type": "string", "format": "date-time" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" },
-        "createdBy": { "type": "string" }
-      },
-      "required": ["id", "taskId", "type", "description", "submittedBy", "submittedAt", "createdAt", "updatedAt", "createdBy"]
+      "required": ["title", "description", "assignedTo", "assignedBy", "deadline"]
     },
     "Activity": {
-      "title": "Activity",
-      "description": "CDS meeting, workshop, webinar, or community outreach project",
+      "title": "CDS Activity",
+      "description": "A scheduled event, meeting, or community outreach activity.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
         "title": { "type": "string" },
         "description": { "type": "string" },
         "date": { "type": "string" },
         "time": { "type": "string" },
-        "locationType": {
-          "type": "string",
-          "enum": ["IN_PERSON", "ONLINE"]
-        },
+        "locationType": { "type": "string" },
         "location": { "type": "string" },
         "lgId": { "type": "string" },
         "lgName": { "type": "string" },
         "organizerId": { "type": "string" },
         "organizerName": { "type": "string" },
         "organizerRole": { "type": "string" },
-        "status": {
-          "type": "string",
-          "enum": ["UPCOMING", "COMPLETED", "CANCELLED"]
-        },
+        "status": { "type": "string" },
         "expectedAttendance": { "type": "number" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
         "createdBy": { "type": "string" }
       },
-      "required": ["id", "title", "description", "date", "time", "locationType", "location", "lgId", "organizerId", "status", "createdAt", "updatedAt", "createdBy"]
+      "required": ["title", "date", "lgId", "status"]
     },
-    "Attendance": {
-      "title": "Attendance",
-      "description": "Member attendance record for an activity, keyed by memberId to prevent duplicates",
+    "LocalGovernment": {
+      "title": "Local Government",
+      "description": "An NYSC LG chapter.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "activityId": { "type": "string" },
-        "memberId": { "type": "string" },
-        "memberName": { "type": "string" },
-        "lgId": { "type": "string" },
-        "status": {
-          "type": "string",
-          "enum": ["PRESENT", "ABSENT"]
-        },
-        "markedBy": { "type": "string" },
-        "markedByName": { "type": "string" },
-        "markedAt": { "type": "string", "format": "date-time" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" },
+        "name": { "type": "string" },
+        "state": { "type": "string" },
+        "presidentId": { "type": "string" },
+        "presidentName": { "type": "string" },
+        "meetingVenue": { "type": "string" },
+        "meetingDay": { "type": "string" },
+        "activeMemberCount": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
         "createdBy": { "type": "string" }
       },
-      "required": ["id", "activityId", "memberId", "status", "markedBy", "markedAt", "createdAt", "updatedAt", "createdBy"]
+      "required": ["name", "state"]
     },
-    "Document": {
-      "title": "Document",
-      "description": "Official CDS document or guide with access control",
+    "CDSDocument": {
+      "title": "CDS Document",
+      "description": "Governance or resource document.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
         "title": { "type": "string" },
         "description": { "type": "string" },
-        "category": {
-          "type": "string",
-          "enum": [
-            "Governance",
-            "Executive Resources",
-            "Training Materials",
-            "Programme Guides",
-            "Reports & Templates",
-            "Forms",
-            "Branding",
-            "Other"
-          ]
-        },
+        "category": { "type": "string" },
         "fileUrl": { "type": "string" },
         "fileSize": { "type": "string" },
         "fileType": { "type": "string" },
-        "visibility": {
-          "type": "string",
-          "enum": ["ALL", "EXECUTIVES_ONLY", "LEADERSHIP_ONLY"]
-        },
-        "version": { "type": "string" },
+        "uploadDate": { "type": "string" },
         "uploadedBy": { "type": "string" },
         "uploadedByName": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" },
-        "createdBy": { "type": "string" }
+        "visibility": { "type": "string" },
+        "version": { "type": "string" }
       },
-      "required": ["id", "title", "description", "category", "fileUrl", "visibility", "uploadedBy", "createdAt", "updatedAt", "createdBy"]
+      "required": ["title", "fileUrl", "visibility"]
     },
     "LearningResource": {
-      "title": "LearningResource",
-      "description": "Educational resource (YouTube video, PDF handbook, or external tutorial)",
+      "title": "Learning Resource",
+      "description": "A tutorial, PDF, or external link for member growth.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
         "title": { "type": "string" },
         "description": { "type": "string" },
-        "type": {
-          "type": "string",
-          "enum": ["YOUTUBE", "PDF", "EXTERNAL_URL"]
-        },
+        "type": { "type": "string" },
         "url": { "type": "string" },
         "youtubeVideoId": { "type": "string" },
         "thumbnailUrl": { "type": "string" },
-        "category": {
-          "type": "string",
-          "enum": [
-            "Digital Literacy",
-            "Employability",
-            "Entrepreneurship",
-            "Leadership",
-            "Digital Marketing",
-            "Web Development",
-            "Data Analysis",
-            "Community Impact",
-            "Other"
-          ]
-        },
+        "category": { "type": "string" },
         "durationOrPages": { "type": "string" },
-        "status": {
-          "type": "string",
-          "enum": ["PUBLISHED", "DRAFT", "ARCHIVED"]
-        },
+        "status": { "type": "string" },
         "publishedBy": { "type": "string" },
         "publisherName": { "type": "string" },
         "publisherRole": { "type": "string" },
-        "publishedAt": { "type": "string", "format": "date-time" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" },
-        "createdBy": { "type": "string" }
+        "publishedAt": { "type": "string" },
+        "createdAt": { "type": "string" }
       },
-      "required": ["id", "title", "description", "type", "url", "category", "status", "publishedBy", "publishedAt", "createdAt", "updatedAt", "createdBy"]
+      "required": ["title", "url", "type", "category"]
     },
     "MonthlyReport": {
-      "title": "MonthlyReport",
-      "description": "Standard 8-section monthly operations and impact report",
+      "title": "Monthly Report",
+      "description": "An operational report submitted by an LG or executive.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "reportingMonth": { "type": "string" },
+        "month": { "type": "string" },
         "year": { "type": "number" },
-        "userId": { "type": "string" },
-        "userName": { "type": "string" },
-        "userRole": { "type": "string" },
+        "submitterId": { "type": "string" },
+        "submitterName": { "type": "string" },
+        "submitterRole": { "type": "string" },
         "lgId": { "type": "string" },
         "lgName": { "type": "string" },
-        "state": { "type": "string" },
         "activitiesAssigned": { "type": "number" },
         "activitiesCompleted": { "type": "number" },
         "evidence": { "type": "string" },
         "results": { "type": "string" },
-        "beneficiaries": { "type": "number" },
+        "beneficiariesReached": { "type": "number" },
         "challenges": { "type": "string" },
         "outstandingTasks": { "type": "string" },
         "nextMonthPlan": { "type": "string" },
-        "status": {
-          "type": "string",
-          "enum": ["SUBMITTED", "REVIEWED"]
-        },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" },
-        "createdBy": { "type": "string" }
+        "submittedAt": { "type": "string" },
+        "status": { "type": "string" }
       },
-      "required": ["id", "reportingMonth", "userId", "lgId", "results", "status", "createdAt", "updatedAt", "createdBy"]
+      "required": ["month", "year", "submitterId", "lgId", "status"]
     },
     "Announcement": {
       "title": "Announcement",
-      "description": "Official broadcast announcement for state or LG members",
+      "description": "A system-wide or LG-specific notice.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
         "title": { "type": "string" },
         "content": { "type": "string" },
         "targetLG": { "type": "string" },
-        "priority": {
-          "type": "string",
-          "enum": ["NORMAL", "URGENT"]
-        },
+        "priority": { "type": "string" },
         "authorId": { "type": "string" },
         "authorName": { "type": "string" },
         "authorRole": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" },
-        "createdBy": { "type": "string" }
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
       },
-      "required": ["id", "title", "content", "targetLG", "priority", "authorId", "createdAt", "updatedAt", "createdBy"]
+      "required": ["title", "content", "authorId"]
+    },
+    "SystemSettings": {
+      "title": "System Settings",
+      "description": "Global configuration settings.",
+      "type": "object",
+      "properties": {
+        "stateSecretariat": { "type": "string" },
+        "operationalBatch": { "type": "string" },
+        "operationalBatches": { "type": "array" },
+        "state": { "type": "string" }
+      },
+      "required": ["stateSecretariat", "operationalBatch", "state"]
     }
   },
   "firestore": {
-    "/users/{userId}": {
-      "schema": "User",
-      "description": "Private user records with PII, restricted to account owner and leadership"
+    "members": {
+      "schema": "Member",
+      "description": "Collection of CDS members."
     },
-    "/user_profiles/{userId}": {
-      "schema": "UserProfilePublic",
-      "description": "Public directory profile with non-sensitive fields"
-    },
-    "/lgs/{lgId}": {
-      "schema": "LocalGovernment",
-      "description": "Local Government chapters"
-    },
-    "/tasks/{taskId}": {
+    "tasks": {
       "schema": "Task",
-      "description": "Responsibilities and KPI assignments"
+      "description": "Collection of assigned responsibilities."
     },
-    "/tasks/{taskId}/task_updates/{updateId}": {
-      "schema": "TaskUpdate",
-      "description": "Comments and execution status updates for a task"
-    },
-    "/tasks/{taskId}/evidence/{evidenceId}": {
-      "schema": "Evidence",
-      "description": "Evidence deliverables submitted for a task"
-    },
-    "/activities/{activityId}": {
+    "activities": {
       "schema": "Activity",
-      "description": "CDS activities, workshops and meetings"
+      "description": "Collection of scheduled CDS activities."
     },
-    "/activities/{activityId}/attendance/{memberId}": {
-      "schema": "Attendance",
-      "description": "Attendance record for an activity keyed by memberId"
+    "lgs": {
+      "schema": "LocalGovernment",
+      "description": "Collection of LG chapters."
     },
-    "/documents/{docId}": {
-      "schema": "Document",
-      "description": "CDS documents and guides"
+    "documents": {
+      "schema": "CDSDocument",
+      "description": "Collection of resource documents."
     },
-    "/learning_resources/{resourceId}": {
+    "learning": {
       "schema": "LearningResource",
-      "description": "Curated YouTube videos, PDFs and learning materials"
+      "description": "Collection of growth materials."
     },
-    "/monthly_reports/{reportId}": {
+    "reports": {
       "schema": "MonthlyReport",
-      "description": "8-part monthly operational reports"
+      "description": "Collection of operational reports."
     },
-    "/announcements/{announcementId}": {
+    "announcements": {
       "schema": "Announcement",
-      "description": "Broadcast announcements"
+      "description": "Collection of news and notices."
+    },
+    "settings": {
+      "schema": "SystemSettings",
+      "description": "Global system configuration (usually a single document)."
     }
   }
 }

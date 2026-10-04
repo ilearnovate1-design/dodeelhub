@@ -26,7 +26,7 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({
   const [visibility, setVisibility] = useState<DocumentVisibility>('ALL');
   const [version, setVersion] = useState('v1.0');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
 
@@ -45,7 +45,7 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({
       version,
     };
 
-    dataService.saveDocument(newDoc);
+    await dataService.saveDocument(newDoc);
     onClose();
     // Reset
     setTitle('');

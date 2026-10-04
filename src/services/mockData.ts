@@ -63,6 +63,22 @@ export const INITIAL_LGS: LocalGovernment[] = [
 
 export const INITIAL_MEMBERS: Member[] = [
   {
+    id: 'user-kolawole',
+    fullName: 'Kolawole (Super Admin)',
+    email: 'kolawoles445@gmail.com',
+    phone: '+234 800 000 0001',
+    lgId: 'lg-akure',
+    lgName: 'Ondo State NYSC Directorate (Akure)',
+    state: 'Ondo State',
+    role: 'CDS_COORDINATOR',
+    membershipStatus: 'ACTIVE',
+    dateJoined: '2026-10-01',
+    skills: ['System Administration', 'Strategic Governance', 'Directorate Oversight'],
+    bio: 'Super Administrator & State CDS Coordinator with complete system oversight and executive authority.',
+    assignedTeam: 'State Directorate',
+    password: 'password123',
+  },
+  {
     id: 'user-joma',
     fullName: 'Joma Schools Admin',
     email: 'jomaschools@gmail.com',

@@ -12,6 +12,20 @@ import {
 } from '../types';
 import { calculateTaskStatus, enrichTaskWithStatus } from '../utils/taskStatus';
 import {
+  doc,
+  getDoc,
+  setDoc,
+  collection,
+  getDocs,
+  query,
+  where,
+  onSnapshot,
+  deleteDoc,
+  updateDoc,
+  writeBatch,
+} from 'firebase/firestore';
+import { db } from '../firebase';
+import {
   INITIAL_ACTIVITIES,
   INITIAL_DOCUMENTS,
   INITIAL_LEARNING,
@@ -22,63 +36,137 @@ import {
 } from './mockData';
 
 const STORAGE_KEYS = {
-  MEMBERS: 'dodeel_members_v4',
-  TASKS: 'dodeel_tasks_v4',
-  ACTIVITIES: 'dodeel_activities_v4',
-  DOCUMENTS: 'dodeel_documents_v4',
-  LEARNING: 'dodeel_learning_v4',
-  REPORTS: 'dodeel_reports_v4',
-  LGS: 'dodeel_lgs_v4',
-  SETTINGS: 'dodeel_settings_v4',
-  INITIALIZED: 'dodeel_initialized_v4',
+  INITIALIZED: 'dodeel_firebase_initialized_v1',
 };
 
 class DataService {
   private listeners: Set<() => void> = new Set();
   private cache: {
-    members: Member[] | null;
-    tasks: Task[] | null;
-    activities: Activity[] | null;
-    documents: CDSDocument[] | null;
-    learning: LearningResource[] | null;
-    reports: MonthlyReport[] | null;
-    lgs: LocalGovernment[] | null;
-    settings: SystemSettings | null;
+    members: Member[];
+    tasks: Task[];
+    activities: Activity[];
+    documents: CDSDocument[];
+    learning: LearningResource[];
+    reports: MonthlyReport[];
+    lgs: LocalGovernment[];
+    settings: SystemSettings;
   } = {
-    members: null,
-    tasks: null,
-    activities: null,
-    documents: null,
-    learning: null,
-    reports: null,
-    lgs: null,
-    settings: null,
+    members: [],
+    tasks: [],
+    activities: [],
+    documents: [],
+    learning: [],
+    reports: [],
+    lgs: [],
+    settings: {
+      stateSecretariat: 'Ondo State NYSC Directorate',
+      operationalBatch: '2026 Batch A',
+      operationalBatches: ['2026 Batch A', '2025 Batch C', '2025 Batch B'],
+      state: 'Ondo State',
+    },
   };
 
+  private unsubscribers: Array<() => void> = [];
+
   constructor() {
-    this.ensureInitialized();
+    // Listeners are now triggered by AuthContext once user is confirmed
   }
 
-  private ensureInitialized() {
-    if (typeof window === 'undefined') return;
+  public initRealtimeListeners() {
+    this.stopRealtimeListeners();
+    console.log('Initializing Firestore listeners...');
 
-    const initialized = localStorage.getItem(STORAGE_KEYS.INITIALIZED);
-    if (!initialized) {
-      this.resetToSampleData();
-    }
-  }
-
-  private clearCache() {
-    this.cache = {
-      members: null,
-      tasks: null,
-      activities: null,
-      documents: null,
-      learning: null,
-      reports: null,
-      lgs: null,
-      settings: null,
+    const handleError = (collectionName: string) => (error: any) => {
+      console.error(`Firestore error in ${collectionName} listener:`, error);
     };
+
+    // Sync all collections in realtime
+    this.unsubscribers.push(
+      onSnapshot(collection(db, 'members'), 
+        (snapshot) => {
+          this.cache.members = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Member));
+          this.notify();
+        },
+        handleError('members')
+      )
+    );
+
+    this.unsubscribers.push(
+      onSnapshot(collection(db, 'tasks'), 
+        (snapshot) => {
+          this.cache.tasks = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Task)).map(enrichTaskWithStatus);
+          this.notify();
+        },
+        handleError('tasks')
+      )
+    );
+
+    this.unsubscribers.push(
+      onSnapshot(collection(db, 'activities'), 
+        (snapshot) => {
+          this.cache.activities = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Activity));
+          this.notify();
+        },
+        handleError('activities')
+      )
+    );
+
+    this.unsubscribers.push(
+      onSnapshot(collection(db, 'lgs'), 
+        (snapshot) => {
+          this.cache.lgs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as LocalGovernment));
+          this.notify();
+        },
+        handleError('lgs')
+      )
+    );
+
+    this.unsubscribers.push(
+      onSnapshot(collection(db, 'documents'), 
+        (snapshot) => {
+          this.cache.documents = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CDSDocument));
+          this.notify();
+        },
+        handleError('documents')
+      )
+    );
+
+    this.unsubscribers.push(
+      onSnapshot(collection(db, 'learning'), 
+        (snapshot) => {
+          this.cache.learning = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as LearningResource));
+          this.notify();
+        },
+        handleError('learning')
+      )
+    );
+
+    this.unsubscribers.push(
+      onSnapshot(collection(db, 'reports'), 
+        (snapshot) => {
+          this.cache.reports = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as MonthlyReport));
+          this.notify();
+        },
+        handleError('reports')
+      )
+    );
+
+    this.unsubscribers.push(
+      onSnapshot(doc(db, 'settings', 'global'), 
+        (snapshot) => {
+          if (snapshot.exists()) {
+            this.cache.settings = snapshot.data() as SystemSettings;
+            this.notify();
+          }
+        },
+        handleError('settings')
+      )
+    );
+  }
+
+  public stopRealtimeListeners() {
+    this.unsubscribers.forEach(unsub => unsub());
+    this.unsubscribers = [];
   }
 
   public subscribe(callback: () => void): () => void {
@@ -87,7 +175,6 @@ class DataService {
   }
 
   private notify() {
-    this.clearCache();
     this.listeners.forEach((cb) => {
       try {
         cb();
@@ -97,220 +184,246 @@ class DataService {
     });
   }
 
-  public resetToSampleData() {
-    localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(INITIAL_MEMBERS));
-    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
-    localStorage.setItem(STORAGE_KEYS.ACTIVITIES, JSON.stringify(INITIAL_ACTIVITIES));
-    localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(INITIAL_DOCUMENTS));
-    localStorage.setItem(STORAGE_KEYS.LEARNING, JSON.stringify(INITIAL_LEARNING));
-    localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(INITIAL_REPORTS));
-    localStorage.setItem(STORAGE_KEYS.LGS, JSON.stringify(INITIAL_LGS));
-    localStorage.setItem(
-      STORAGE_KEYS.SETTINGS,
-      JSON.stringify({
-        stateSecretariat: 'Ondo State NYSC Directorate',
-        operationalBatch: '2026 Batch A',
-        operationalBatches: ['2026 Batch A', '2025 Batch C', '2025 Batch B'],
-        state: 'Ondo State',
-      })
-    );
+  public async seedInitialData(force = false) {
+    const initialized = localStorage.getItem(STORAGE_KEYS.INITIALIZED);
+    if (initialized && !force) return;
+
+    console.log('Seeding/Resetting initial data to Firestore...');
+    const batch = writeBatch(db);
+    
+    // Seed settings
+    const settingsRef = doc(db, 'settings', 'global');
+    batch.set(settingsRef, {
+      stateSecretariat: 'Ondo State NYSC Directorate',
+      operationalBatch: '2026 Batch A',
+      operationalBatches: ['2026 Batch A', '2025 Batch C', '2025 Batch B'],
+      state: 'Ondo State',
+    });
+
+    // Seed members
+    for (const m of INITIAL_MEMBERS) {
+      const ref = doc(db, 'members', m.id);
+      batch.set(ref, m);
+    }
+
+    // Seed tasks
+    for (const t of INITIAL_TASKS) {
+      const ref = doc(db, 'tasks', t.id);
+      batch.set(ref, t);
+    }
+
+    // Seed activities
+    for (const a of INITIAL_ACTIVITIES) {
+      const ref = doc(db, 'activities', a.id);
+      batch.set(ref, a);
+    }
+
+    // Seed LGs
+    for (const lg of INITIAL_LGS) {
+      const ref = doc(db, 'lgs', lg.id);
+      batch.set(ref, lg);
+    }
+
+    // Seed documents
+    for (const d of INITIAL_DOCUMENTS) {
+      const ref = doc(db, 'documents', d.id);
+      batch.set(ref, d);
+    }
+
+    // Seed learning
+    for (const l of INITIAL_LEARNING) {
+      const ref = doc(db, 'learning', l.id);
+      batch.set(ref, l);
+    }
+
+    await batch.commit();
     localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
-    this.notify();
   }
 
-  public clearAllData() {
-    if (typeof window === 'undefined') return;
+  public async clearAllDataAsync() {
+    console.warn('Clearing all operational data from Firestore...');
+    const collections = ['members', 'tasks', 'activities', 'lgs', 'documents', 'learning', 'reports'];
     
-    // Clear all keys with dodeel_ prefix
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('dodeel_')) {
-        keysToRemove.push(key);
-      }
+    for (const collName of collections) {
+      const snapshot = await getDocs(collection(db, collName));
+      const batch = writeBatch(db);
+      snapshot.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
     }
     
-    keysToRemove.forEach(key => localStorage.removeItem(key));
-    
-    // Set a flag so it doesn't auto-reinitialize immediately if not desired
-    // (though usually we WANT it to re-initialize on next refresh if empty)
-    localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'cleared');
-    
-    this.notify();
+    // Also clear settings
+    await deleteDoc(doc(db, 'settings', 'global'));
+    localStorage.removeItem(STORAGE_KEYS.INITIALIZED);
   }
 
   // --- SYSTEM SETTINGS ---
   public getSettings(): SystemSettings {
-    if (this.cache.settings) return this.cache.settings;
-    const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    const data = raw
-      ? JSON.parse(raw)
-      : {
-          stateSecretariat: 'Ondo State NYSC Directorate',
-          operationalBatch: '2026 Batch A',
-          operationalBatches: ['2026 Batch A', '2025 Batch C', '2025 Batch B'],
-          state: 'Ondo State',
-        };
-    this.cache.settings = data;
-    return data;
+    return this.cache.settings || {
+      stateSecretariat: 'Ondo State NYSC Directorate',
+      operationalBatch: '2026 Batch A',
+      operationalBatches: ['2026 Batch A', '2025 Batch C', '2025 Batch B'],
+      state: 'Ondo State',
+    };
   }
 
-  public saveSettings(settings: SystemSettings): void {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
-    this.notify();
+  public async saveSettings(settings: SystemSettings): Promise<void> {
+    await setDoc(doc(db, 'settings', 'global'), settings);
   }
 
   // --- LOCAL GOVERNMENTS ---
   public getLGs(): LocalGovernment[] {
-    if (this.cache.lgs) return this.cache.lgs;
-    const raw = localStorage.getItem(STORAGE_KEYS.LGS);
-    const data = raw ? JSON.parse(raw) : INITIAL_LGS;
-    this.cache.lgs = data;
-    return data;
+    return this.cache.lgs;
   }
 
-  public saveLG(lg: LocalGovernment): void {
-    const lgs = this.getLGs();
-    const index = lgs.findIndex((l) => l.id === lg.id);
-    if (index >= 0) {
-      lgs[index] = lg;
-    } else {
-      lgs.push(lg);
-    }
-    localStorage.setItem(STORAGE_KEYS.LGS, JSON.stringify(lgs));
-    this.notify();
+  public async saveLG(lg: LocalGovernment): Promise<void> {
+    await setDoc(doc(db, 'lgs', lg.id), lg);
   }
 
   // --- MEMBERS ---
   public getMembers(): Member[] {
-    if (this.cache.members) return this.cache.members;
-    const raw = localStorage.getItem(STORAGE_KEYS.MEMBERS);
-    const data = raw ? JSON.parse(raw) : INITIAL_MEMBERS;
-    this.cache.members = data;
-    return data;
+    return this.cache.members;
   }
 
-  public getMemberById(id: string): Member | undefined {
-    return this.getMembers().find((m) => m.id === id);
+  public async getMemberByIdAsync(id: string): Promise<Member | undefined> {
+    const d = await getDoc(doc(db, 'members', id));
+    return d.exists() ? { id: d.id, ...d.data() } as Member : undefined;
   }
 
-  public saveMember(member: Member): void {
-    const members = this.getMembers();
-    const index = members.findIndex((m) => m.id === member.id);
-    if (index >= 0) {
-      members[index] = member;
-    } else {
-      members.unshift(member);
+  public async ensureSuperAdminUser(email: string, fullName = 'Kolawole (Super Admin)', uid?: string): Promise<void> {
+    const normalizedEmail = email.toLowerCase().trim();
+    const existing = this.cache.members.find(m => m.email.toLowerCase() === normalizedEmail);
+    const targetId = uid || existing?.id || (normalizedEmail === 'kolawoles445@gmail.com' ? 'user-kolawole' : `user-${Date.now()}`);
+
+    const superAdminMember: Member = {
+      ...(existing || {}),
+      id: targetId,
+      fullName: existing?.fullName || fullName,
+      email: normalizedEmail,
+      phone: existing?.phone || '+234 800 000 0001',
+      lgId: existing?.lgId || 'lg-akure',
+      lgName: existing?.lgName || 'Ondo State NYSC Directorate (Akure)',
+      state: 'Ondo State',
+      role: 'CDS_COORDINATOR',
+      membershipStatus: 'ACTIVE',
+      dateJoined: existing?.dateJoined || '2026-10-01',
+      skills: existing?.skills?.length ? existing.skills : ['System Administration', 'Strategic Governance', 'Directorate Oversight'],
+      bio: existing?.bio || 'Super Administrator & State CDS Coordinator with complete system oversight and executive authority.',
+      assignedTeam: existing?.assignedTeam || 'State Directorate',
+      password: existing?.password || 'password123',
+      requiresProfileUpdate: false,
+    };
+
+    await setDoc(doc(db, 'members', targetId), superAdminMember);
+    console.log(`Super Admin status secured for ${normalizedEmail} (ID: ${targetId})`);
+  }
+
+  public async saveMemberAsync(member: Member): Promise<void> {
+    await setDoc(doc(db, 'members', member.id), member);
+    
+    // Update LG active count using a consistent calculation
+    if (member.lgId && member.lgId !== 'ALL') {
+      // Re-calculate based on current cache + the new member if not already there
+      const currentMembers = this.cache.members.some(m => m.id === member.id) 
+        ? this.cache.members 
+        : [...this.cache.members, member];
+      
+      const count = currentMembers.filter(m => m.lgId === member.lgId).length;
+      
+      const lgDoc = await getDoc(doc(db, 'lgs', member.lgId));
+      if (lgDoc.exists()) {
+        await updateDoc(doc(db, 'lgs', member.lgId), {
+          activeMemberCount: count
+        });
+      }
     }
-    localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
-    this.notify();
   }
 
-  public deleteMember(id: string): void {
-    const members = this.getMembers().filter((m) => m.id !== id);
-    localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
-    this.notify();
+  public async deleteMember(id: string): Promise<void> {
+    const member = await this.getMemberByIdAsync(id);
+    await deleteDoc(doc(db, 'members', id));
+    
+    // Update LG active count if member existed
+    if (member && member.lgId && member.lgId !== 'ALL') {
+      const count = this.cache.members.filter(m => m.lgId === member.lgId && m.id !== id).length;
+      
+      const lgDoc = await getDoc(doc(db, 'lgs', member.lgId));
+      if (lgDoc.exists()) {
+        await updateDoc(doc(db, 'lgs', member.lgId), {
+          activeMemberCount: Math.max(0, count)
+        });
+      }
+    }
   }
 
   // --- TASKS ---
   public getTasks(): Task[] {
-    if (this.cache.tasks) return this.cache.tasks;
-    const raw = localStorage.getItem(STORAGE_KEYS.TASKS);
-    const tasks: Task[] = raw ? JSON.parse(raw) : INITIAL_TASKS;
-    const enriched = tasks.map(enrichTaskWithStatus);
-    this.cache.tasks = enriched;
-    return enriched;
+    return this.cache.tasks;
   }
 
-  public getTaskById(id: string): Task | undefined {
-    return this.getTasks().find((t) => t.id === id);
-  }
-
-  public saveTask(task: Task): void {
-    const tasks = this.getTasks();
-    const index = tasks.findIndex((t) => t.id === task.id);
+  public async saveTask(task: Task): Promise<void> {
     task.updatedAt = new Date().toISOString();
-    task.assignedTo = task.assignedTo || task.assignedUserId;
-    task.assignedBy = task.assignedBy || task.createdBy;
-    task.assignedLG = task.assignedLG || task.lgId;
     task.hasEvidence = Boolean(task.evidence);
     if (task.completedAt && !task.completionDate) {
       task.completionDate = task.completedAt;
     }
     task.calculatedStatus = calculateTaskStatus(task);
     task.status = task.calculatedStatus;
-
-    if (index >= 0) {
-      tasks[index] = task;
-    } else {
-      tasks.unshift(task);
-    }
-    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
-    this.notify();
+    
+    await setDoc(doc(db, 'tasks', task.id), task);
   }
 
-  public updateTaskProgress(
+  public async updateTaskProgress(
     taskId: string,
     manualProgress: TaskManualProgress,
     evidence?: TaskEvidence,
     result?: string
-  ): void {
-    const task = this.getTaskById(taskId);
-    if (!task) return;
+  ): Promise<void> {
+    const taskDoc = await getDoc(doc(db, 'tasks', taskId));
+    if (!taskDoc.exists()) return;
+    const task = taskDoc.data() as Task;
 
-    task.manualProgress = manualProgress;
-    if (evidence) {
-      task.evidence = evidence;
+    const updates: any = {
+      manualProgress,
+      updatedAt: new Date().toISOString()
+    };
+    
+    if (evidence) updates.evidence = evidence;
+    if (result !== undefined) updates.result = result;
+    
+    if (manualProgress === 'COMPLETED' && !task.completedAt) {
+      updates.completionDate = new Date().toISOString().split('T')[0];
+      updates.completedAt = new Date().toISOString();
     }
-    if (result !== undefined) {
-      task.result = result;
-    }
-    if (manualProgress === 'COMPLETED' && !task.completionDate) {
-      task.completionDate = new Date().toISOString().split('T')[0];
-      task.completedAt = new Date().toISOString();
-    }
-    this.saveTask(task);
+    
+    await updateDoc(doc(db, 'tasks', taskId), updates);
   }
 
   /**
    * Reopens a completed task by authorized leadership with a recorded reason
    */
-  public reopenTask(
+  public async reopenTask(
     taskId: string,
     userId: string,
     userName: string,
     userRole: any,
     reason: string,
     newDeadline?: string
-  ): void {
-    const task = this.getTaskById(taskId);
-    if (!task) return;
+  ): Promise<void> {
+    const taskDoc = await getDoc(doc(db, 'tasks', taskId));
+    if (!taskDoc.exists()) return;
+    const task = taskDoc.data() as Task;
 
     const timestamp = new Date().toISOString();
-    task.manualProgress = 'IN_PROGRESS';
-    task.completedAt = undefined;
-    task.completionDate = undefined;
-    if (newDeadline) {
-      task.deadline = newDeadline;
-    }
-
-    task.reopenedAt = timestamp;
-    task.reopenedBy = userId;
-    task.reopenedByName = userName;
-    task.reopenReason = reason;
-
-    if (!task.reopenHistory) {
-      task.reopenHistory = [];
-    }
-    task.reopenHistory.push({
+    const reopenRecord = {
       reopenedAt: timestamp,
       reopenedBy: userId,
       reopenedByName: userName,
       reason,
-    });
+    };
 
-    // Add audit comment
-    task.comments.push({
+    const newComment = {
       id: `reopen-${Date.now()}`,
       authorId: userId,
       authorName: userName,
@@ -319,20 +432,38 @@ class DataService {
         newDeadline ? ` (Deadline updated to: ${newDeadline})` : ''
       }`,
       createdAt: timestamp,
-    });
+    };
 
-    this.saveTask(task);
+    const updates: any = {
+      manualProgress: 'IN_PROGRESS' as TaskManualProgress,
+      completedAt: null,
+      completionDate: null,
+      reopenedAt: timestamp,
+      reopenedBy: userId,
+      reopenedByName: userName,
+      reopenReason: reason,
+      reopenHistory: [...(task.reopenHistory || []), reopenRecord],
+      comments: [...(task.comments || []), newComment],
+      updatedAt: timestamp
+    };
+
+    if (newDeadline) {
+      updates.deadline = newDeadline;
+    }
+
+    await updateDoc(doc(db, 'tasks', taskId), updates);
   }
 
-  public addTaskComment(
+  public async addTaskComment(
     taskId: string,
     authorId: string,
     authorName: string,
     authorRole: any,
     text: string
-  ): void {
-    const task = this.getTaskById(taskId);
-    if (!task) return;
+  ): Promise<void> {
+    const taskDoc = await getDoc(doc(db, 'tasks', taskId));
+    if (!taskDoc.exists()) return;
+    const task = taskDoc.data() as Task;
 
     const newComment = {
       id: `comm-${Date.now()}`,
@@ -343,51 +474,40 @@ class DataService {
       createdAt: new Date().toISOString(),
     };
 
-    task.comments.push(newComment);
-    this.saveTask(task);
+    await updateDoc(doc(db, 'tasks', taskId), {
+      comments: [...(task.comments || []), newComment],
+      updatedAt: new Date().toISOString()
+    });
   }
 
-  public deleteTask(id: string): void {
-    const tasks = this.getTasks().filter((t) => t.id !== id);
-    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
-    this.notify();
+  public async deleteTask(id: string): Promise<void> {
+    await deleteDoc(doc(db, 'tasks', id));
   }
 
   // --- ACTIVITIES & ATTENDANCE ---
   public getActivities(): Activity[] {
-    if (this.cache.activities) return this.cache.activities;
-    const raw = localStorage.getItem(STORAGE_KEYS.ACTIVITIES);
-    const data = raw ? JSON.parse(raw) : INITIAL_ACTIVITIES;
-    this.cache.activities = data;
-    return data;
+    return this.cache.activities;
   }
 
-  public getActivityById(id: string): Activity | undefined {
-    return this.getActivities().find((a) => a.id === id);
+  public async saveActivity(activity: Activity): Promise<void> {
+    await setDoc(doc(db, 'activities', activity.id), activity);
   }
 
-  public saveActivity(activity: Activity): void {
-    const activities = this.getActivities();
-    const index = activities.findIndex((a) => a.id === activity.id);
-    if (index >= 0) {
-      activities[index] = activity;
-    } else {
-      activities.unshift(activity);
-    }
-    localStorage.setItem(STORAGE_KEYS.ACTIVITIES, JSON.stringify(activities));
-    this.notify();
+  public async deleteActivity(id: string): Promise<void> {
+    await deleteDoc(doc(db, 'activities', id));
   }
 
-  public recordBulkAttendance(
+  public async recordBulkAttendance(
     activityId: string,
     records: Array<{ memberId: string; memberName: string; status: 'PRESENT' | 'ABSENT' }>,
     markedBy: string
-  ): void {
-    const activity = this.getActivityById(activityId);
-    if (!activity) return;
+  ): Promise<void> {
+    const activityDoc = await getDoc(doc(db, 'activities', activityId));
+    if (!activityDoc.exists()) return;
+    const activity = activityDoc.data() as Activity;
 
     const now = new Date().toISOString();
-    const existingMap = new Map(activity.attendanceRecords.map((r) => [r.memberId, r]));
+    const existingMap = new Map(activity.attendanceRecords?.map((r) => [r.memberId, r]) || []);
 
     records.forEach((r) => {
       existingMap.set(r.memberId, {
@@ -399,89 +519,45 @@ class DataService {
       });
     });
 
-    activity.attendanceRecords = Array.from(existingMap.values());
-    this.saveActivity(activity);
-  }
-
-  public deleteActivity(id: string): void {
-    const activities = this.getActivities().filter((a) => a.id !== id);
-    localStorage.setItem(STORAGE_KEYS.ACTIVITIES, JSON.stringify(activities));
-    this.notify();
+    await updateDoc(doc(db, 'activities', activityId), {
+      attendanceRecords: Array.from(existingMap.values()),
+      updatedAt: now
+    });
   }
 
   // --- DOCUMENTS ---
   public getDocuments(): CDSDocument[] {
-    if (this.cache.documents) return this.cache.documents;
-    const raw = localStorage.getItem(STORAGE_KEYS.DOCUMENTS);
-    const data = raw ? JSON.parse(raw) : INITIAL_DOCUMENTS;
-    this.cache.documents = data;
-    return data;
+    return this.cache.documents;
   }
 
-  public saveDocument(doc: CDSDocument): void {
-    const docs = this.getDocuments();
-    const index = docs.findIndex((d) => d.id === doc.id);
-    if (index >= 0) {
-      docs[index] = doc;
-    } else {
-      docs.unshift(doc);
-    }
-    localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(docs));
-    this.notify();
+  public async saveDocument(docData: CDSDocument): Promise<void> {
+    await setDoc(doc(db, 'documents', docData.id), docData);
   }
 
-  public deleteDocument(id: string): void {
-    const docs = this.getDocuments().filter((d) => d.id !== id);
-    localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(docs));
-    this.notify();
+  public async deleteDocument(id: string): Promise<void> {
+    await deleteDoc(doc(db, 'documents', id));
   }
 
   // --- LEARNING RESOURCES ---
   public getLearning(): LearningResource[] {
-    if (this.cache.learning) return this.cache.learning;
-    const raw = localStorage.getItem(STORAGE_KEYS.LEARNING);
-    const data = raw ? JSON.parse(raw) : INITIAL_LEARNING;
-    this.cache.learning = data;
-    return data;
+    return this.cache.learning;
   }
 
-  public saveLearning(resource: LearningResource): void {
-    const list = this.getLearning();
-    const index = list.findIndex((r) => r.id === resource.id);
-    if (index >= 0) {
-      list[index] = resource;
-    } else {
-      list.unshift(resource);
-    }
-    localStorage.setItem(STORAGE_KEYS.LEARNING, JSON.stringify(list));
-    this.notify();
+  public async saveLearning(resource: LearningResource): Promise<void> {
+    await setDoc(doc(db, 'learning', resource.id), resource);
   }
 
-  public deleteLearning(id: string): void {
-    const list = this.getLearning().filter((r) => r.id !== id);
-    localStorage.setItem(STORAGE_KEYS.LEARNING, JSON.stringify(list));
-    this.notify();
+  public async deleteLearning(id: string): Promise<void> {
+    await deleteDoc(doc(db, 'learning', id));
   }
 
   // --- MONTHLY REPORTS ---
   public getReports(): MonthlyReport[] {
-    if (this.cache.reports) return this.cache.reports;
-    const raw = localStorage.getItem(STORAGE_KEYS.REPORTS);
-    const data = raw ? JSON.parse(raw) : INITIAL_REPORTS;
-    this.cache.reports = data;
-    return data;
+    return this.cache.reports;
   }
 
-  public saveReport(report: MonthlyReport): void {
-    const reports = this.getReports();
-    const index = reports.findIndex((r) => r.id === report.id);
-    if (index >= 0) {
-      reports[index] = report;
-    } else {
-      reports.unshift(report);
-    }
-    localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(reports));
-    this.notify();
+  public async saveReport(report: MonthlyReport): Promise<void> {
+    await setDoc(doc(db, 'reports', report.id), report);
   }
 }
 

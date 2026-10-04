@@ -71,7 +71,7 @@ export const ReportSubmitModal: React.FC<ReportSubmitModalProps> = ({
     setIsSubmitting(true);
 
     // Simulate network delay for UX
-    setTimeout(() => {
+    setTimeout(async () => {
       const selectedLG = lgs.find((l) => l.id === lgId) || {
         id: lgId,
         name: currentUser.lgName,
@@ -100,7 +100,7 @@ export const ReportSubmitModal: React.FC<ReportSubmitModalProps> = ({
         status: 'SUBMITTED',
       };
 
-      dataService.saveReport(newReport);
+      await dataService.saveReport(newReport);
       setIsSubmitting(false);
       onClose();
     }, 800);

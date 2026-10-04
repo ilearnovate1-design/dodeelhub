@@ -40,7 +40,7 @@ export const LearningPublishModal: React.FC<LearningPublishModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !url.trim()) return;
     if (type === 'YOUTUBE' && !youtubeVideoId) return;
@@ -61,7 +61,7 @@ export const LearningPublishModal: React.FC<LearningPublishModalProps> = ({
       createdAt: new Date().toISOString(),
     };
 
-    dataService.saveLearning(newResource);
+    await dataService.saveLearning(newResource);
     onClose();
     // Reset
     setTitle('');

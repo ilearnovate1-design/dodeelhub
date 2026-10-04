@@ -35,27 +35,18 @@ service cloud.firestore {
     }
     
     function isLeadership() {
-      return isSignedIn() && (
-        getUserRole() in [
-          'CDS_COORDINATOR', 'STATE_PRESIDENT', 'VP_GROWTH', 
-          'VP_ACCOUNTABILITY', 'VP_COMMUNITY_IMPACT', 'LG_PRESIDENT'
-        ] ||
-        request.auth.token.email in ['kolawoles445@gmail.com', 'jomaschools@gmail.com', 'coordinator@dodeel.org']
-      );
+      return isSignedIn() && getUserRole() in [
+        'CDS_COORDINATOR', 'STATE_PRESIDENT', 'VP_GROWTH', 
+        'VP_ACCOUNTABILITY', 'VP_COMMUNITY_IMPACT', 'LG_PRESIDENT'
+      ];
     }
     
     function isCoordinator() {
-      return isSignedIn() && (
-        getUserRole() == 'CDS_COORDINATOR' ||
-        request.auth.token.email in ['kolawoles445@gmail.com', 'jomaschools@gmail.com', 'coordinator@dodeel.org']
-      );
+      return isSignedIn() && getUserRole() == 'CDS_COORDINATOR';
     }
 
     function isStateExecutive() {
-      return isSignedIn() && (
-        getUserRole() in ['STATE_PRESIDENT', 'VP_GROWTH', 'VP_ACCOUNTABILITY', 'VP_COMMUNITY_IMPACT'] ||
-        request.auth.token.email in ['kolawoles445@gmail.com', 'jomaschools@gmail.com', 'coordinator@dodeel.org']
-      );
+      return isSignedIn() && getUserRole() in ['STATE_PRESIDENT', 'VP_GROWTH', 'VP_ACCOUNTABILITY', 'VP_COMMUNITY_IMPACT'];
     }
 
     // -------------------------------------------------------------------------
@@ -91,7 +82,8 @@ service cloud.firestore {
 
     // MEMBERS
     match /members/{userId} {
-      allow read: if isSignedIn(); // Allow list and get for all members to support directory and lookups
+      allow get: if isSignedIn() && (isOwner(userId) || isLeadership());
+      allow list: if isSignedIn() && (isLeadership() || isOwner(userId));
       
       allow create: if isSignedIn() && (
         isCoordinator() || 
@@ -108,7 +100,11 @@ service cloud.firestore {
 
     // TASKS
     match /tasks/{taskId} {
-      allow read: if isSignedIn(); // Allow list and get for all members to support dashboard views
+      allow read: if isSignedIn() && (
+        isLeadership() || 
+        existing().assignedTo == request.auth.uid || 
+        existing().assignedBy == request.auth.uid
+      );
       
       allow create: if isSignedIn() && isLeadership() && isValidTask(incoming());
       
@@ -144,18 +140,6 @@ service cloud.firestore {
     match /settings/{docId} {
       allow read: if isSignedIn();
       allow write: if isCoordinator();
-    }
-
-    // LEARNING
-    match /learning/{learningId} {
-      allow read: if isSignedIn();
-      allow write: if isLeadership();
-    }
-
-    // REPORTS
-    match /reports/{reportId} {
-      allow read: if isSignedIn();
-      allow write: if isLeadership() || getUserRole() == 'EXECUTIVE' || getUserRole() == 'GROUP_LEADER';
     }
   }
 }

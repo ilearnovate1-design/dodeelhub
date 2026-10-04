@@ -1,7 +1,18 @@
 import { UserRole } from '../types';
 
+export const SUPER_ADMIN_EMAILS = [
+  'kolawoles445@gmail.com',
+  'jomaschools@gmail.com',
+  'coordinator@dodeel.org',
+];
+
+export function isSuperAdminEmail(email?: string | null): boolean {
+  if (!email) return false;
+  return SUPER_ADMIN_EMAILS.includes(email.trim().toLowerCase());
+}
+
 export const ROLE_LABELS: Record<UserRole, string> = {
-  CDS_COORDINATOR: 'CDS Coordinator',
+  CDS_COORDINATOR: 'CDS Coordinator (Super Admin)',
   STATE_PRESIDENT: 'State President',
   VP_GROWTH: 'VP Growth & Engagement',
   VP_ACCOUNTABILITY: 'VP Accountability & Monitoring',

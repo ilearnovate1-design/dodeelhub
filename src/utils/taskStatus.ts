@@ -10,7 +10,7 @@ import { Task, TaskStatus } from '../types';
  */
 export function calculateTaskStatus(task: Pick<Task, 'manualProgress' | 'deadline' | 'evidence' | 'result'>): TaskStatus {
   // If marked completed with evidence or result
-  if (task.manualProgress === 'COMPLETED' && (task.evidence || (task.result && task.result.trim().length > 0))) {
+  if (task.manualProgress === 'COMPLETED' && (task.evidence || (task.result && typeof task.result === 'string' && task.result.trim().length > 0))) {
     return 'COMPLETED';
   }
 

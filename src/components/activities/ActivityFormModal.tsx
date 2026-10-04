@@ -30,7 +30,7 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
   const [lgId, setLgId] = useState(currentUser.lgId || 'lg-ikeja');
   const [expectedAttendance, setExpectedAttendance] = useState(40);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !location.trim()) return;
 
@@ -58,7 +58,7 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
       createdAt: new Date().toISOString(),
     };
 
-    dataService.saveActivity(newActivity);
+    await dataService.saveActivity(newActivity);
     onClose();
     // Reset
     setTitle('');

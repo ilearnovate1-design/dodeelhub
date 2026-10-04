@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { isLeadershipRole, ROLE_LABELS } from '../../utils/permissions';
 import { RoleBadge } from './RoleBadge';
@@ -7,6 +7,7 @@ import {
   BookOpen,
   Calendar,
   CheckSquare,
+  CloudOff,
   FileText,
   FolderLock,
   LayoutDashboard,
@@ -32,6 +33,20 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenRoleSwitcher,
 }) => {
   const { currentUser, currentRole } = useAuth();
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   if (!currentUser) return null;
 
@@ -154,6 +169,16 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Role Persona Switcher & Mobile Menu Trigger */}
             <div className="flex items-center gap-2">
+              {!isOnline && (
+                <div 
+                  className="flex items-center gap-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg text-[10px] font-bold text-amber-700 animate-pulse"
+                  title="Your changes will sync when you reconnect"
+                >
+                  <CloudOff className="w-3 h-3" />
+                  <span className="hidden xs:inline uppercase tracking-wider">Working Offline</span>
+                </div>
+              )}
+              
               <button
                 type="button"
                 onClick={handleOpenRoleModal}

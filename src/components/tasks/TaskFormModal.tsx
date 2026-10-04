@@ -33,7 +33,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
     new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !assignedUserId) return;
 
@@ -76,7 +76,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
       updatedAt: new Date().toISOString(),
     };
 
-    dataService.saveTask(newTask);
+    await dataService.saveTask(newTask);
     onClose();
     // Reset form
     setTitle('');

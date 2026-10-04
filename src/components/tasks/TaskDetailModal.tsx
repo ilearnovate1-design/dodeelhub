@@ -67,15 +67,15 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   // Status calculation
   const status = task.calculatedStatus || 'NOT_STARTED';
 
-  const handleUpdateProgress = (progress: TaskManualProgress) => {
-    dataService.updateTaskProgress(task.id, progress);
+  const handleUpdateProgress = async (progress: TaskManualProgress) => {
+    await dataService.updateTaskProgress(task.id, progress);
   };
 
-  const handleReopenSubmit = (e: React.FormEvent) => {
+  const handleReopenSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reopenReason.trim()) return;
 
-    dataService.reopenTask(
+    await dataService.reopenTask(
       task.id,
       currentUser.id,
       currentUser.fullName,
@@ -89,11 +89,11 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     setReopenDeadline('');
   };
 
-  const handleSubmitEvidence = (e: React.FormEvent) => {
+  const handleSubmitEvidence = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!evidenceDesc && !evidenceUrl) return;
 
-    dataService.updateTaskProgress(
+    await dataService.updateTaskProgress(
       task.id,
       'COMPLETED',
       {
@@ -112,11 +112,11 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     setEvidenceDesc('');
   };
 
-  const handleAddComment = (e: React.FormEvent) => {
+  const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentText.trim()) return;
 
-    dataService.addTaskComment(
+    await dataService.addTaskComment(
       task.id,
       currentUser.id,
       currentUser.fullName,

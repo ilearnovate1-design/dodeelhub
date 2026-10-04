@@ -42,7 +42,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
     act.attendanceRecords.some((r) => r.memberId === member.id && r.status === 'PRESENT')
   );
 
-  const cleanPhone = member.phone.replace(/[^0-9]/g, '');
+  const cleanPhone = (member.phone || '').replace(/[^0-9]/g, '');
 
   return (
     <Modal

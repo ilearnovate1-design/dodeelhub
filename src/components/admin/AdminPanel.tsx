@@ -32,6 +32,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ members, lgs, settings }
   const [activeAdminTab, setActiveAdminTab] = useState<'USERS' | 'LGS' | 'SYSTEM'>('USERS');
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [selectedRoleToAssign, setSelectedRoleToAssign] = useState<UserRole>('MEMBER');
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // New LG form state
   const [isAddingLg, setIsAddingLg] = useState(false);
@@ -56,17 +57,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ members, lgs, settings }
   }, [settings, isEditingSettings]);
 
   // Handle Role Change for any user
-  const handleSaveUserRole = (userId: string) => {
+  const handleSaveUserRole = async (userId: string) => {
     const target = members.find((m) => m.id === userId);
     if (!target) return;
 
     const updated = { ...target, role: selectedRoleToAssign };
-    dataService.saveMember(updated);
+    await dataService.saveMemberAsync(updated);
     setEditingUserId(null);
   };
 
   // Add LG
-  const handleAddLG = (e: React.FormEvent) => {
+  const handleAddLG = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLgName.trim()) return;
 
@@ -79,42 +80,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ members, lgs, settings }
       activeMemberCount: 0,
     };
 
-    dataService.saveLG(newLG);
+    await dataService.saveLG(newLG);
     setIsAddingLg(false);
     setNewLgName('');
     setNewLgVenue('');
   };
 
-  const handleResetData = () => {
+  const handleResetData = async () => {
     if (
       window.confirm(
         'Reset DO-DEEL CDS Manager to the initial realistic sample data? All local tasks, attendance, and member changes will be reseeded.'
       )
     ) {
-      dataService.resetToSampleData();
-      // No need to set state here as App.tsx will trigger re-render with new settings prop
+      await dataService.seedInitialData(true);
     }
   };
 
-  const handleClearData = () => {
+  const handleClearData = async () => {
     if (
       window.confirm(
         'DANGER: Clear ALL operational data? This will delete all members, tasks, attendance, and settings. This action is irreversible.'
       )
     ) {
-      dataService.clearAllData();
-      window.location.reload();
+      await dataService.clearAllDataAsync();
+      setStatusMessage('Operational data cleared. The system will re-initialize on the next load.');
+      setTimeout(() => setStatusMessage(null), 5000);
     }
   };
 
-  const handleSaveSettings = () => {
+  const handleSaveSettings = async () => {
     const newSettings = {
       ...settings,
       stateSecretariat: editSecretariat.trim(),
       operationalBatch: editBatch.trim(),
       operationalBatches: editBatches,
     };
-    dataService.saveSettings(newSettings);
+    await dataService.saveSettings(newSettings);
     setIsEditingSettings(false);
   };
 
@@ -222,6 +223,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ members, lgs, settings }
           );
         })}
       </div>
+
+      {/* Admin Status Notification */}
+      {statusMessage && (
+        <div className="bg-purple-50 border border-purple-200 text-purple-900 px-4 py-3 rounded-xl text-xs font-semibold flex items-center justify-between animate-in fade-in">
+          <span>{statusMessage}</span>
+          <button
+            type="button"
+            onClick={() => setStatusMessage(null)}
+            className="text-purple-600 hover:text-purple-800 text-xs font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* TAB 1: USERS & ROLE PERMISSIONS */}
       {activeAdminTab === 'USERS' && (

@@ -70,7 +70,7 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({
     setAttendanceMap(newMap);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const records = Object.entries(attendanceMap).map(([memberId, status]) => {
       const mem = members.find((m) => m.id === memberId);
       return {
@@ -80,7 +80,7 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({
       };
     });
 
-    dataService.recordBulkAttendance(activity.id, records, currentUser.fullName);
+    await dataService.recordBulkAttendance(activity.id, records, currentUser.fullName);
     onClose();
   };
 
