@@ -63,6 +63,22 @@ export const INITIAL_LGS: LocalGovernment[] = [
 
 export const INITIAL_MEMBERS: Member[] = [
   {
+    id: 'user-joma',
+    fullName: 'Joma Schools Admin',
+    email: 'jomaschools@gmail.com',
+    phone: '+234 800 000 0000',
+    lgId: 'lg-akure',
+    lgName: 'Ondo State NYSC Directorate (Akure)',
+    state: 'Ondo State',
+    role: 'CDS_COORDINATOR',
+    membershipStatus: 'ACTIVE',
+    dateJoined: '2026-10-01',
+    skills: ['System Administration', 'Education Management'],
+    bio: 'Primary Administrator for DO-DEEL CDS Manager.',
+    assignedTeam: 'Management',
+    password: 'password123',
+  },
+  {
     id: 'user-coordinator',
     fullName: 'Dr. Adebayo Ogunlesi',
     email: 'coordinator@dodeel.org',
@@ -792,6 +808,20 @@ export const INITIAL_ACTIVITIES: Activity[] = [
 ];
 
 export const INITIAL_DOCUMENTS: CDSDocument[] = [
+  {
+    id: 'doc-guide',
+    title: 'User Role & Permissions Guide (State Official)',
+    description: 'Detailed breakdown of access levels, responsibilities, and operational workflows for all DO-DEEL CDS roles from Member to Coordinator.',
+    category: 'Governance',
+    fileUrl: '/docs/USER_ROLE_GUIDE.md',
+    fileSize: '12 KB',
+    fileType: 'MD',
+    uploadDate: '2026-10-04',
+    uploadedBy: 'user-coordinator',
+    uploadedByName: 'Dr. Adebayo Ogunlesi',
+    visibility: 'ALL',
+    version: 'v1.0',
+  },
   {
     id: 'doc-1',
     title: 'DO-DEEL CDS Official Constitution & Code of Conduct',

@@ -22,15 +22,15 @@ import {
 } from './mockData';
 
 const STORAGE_KEYS = {
-  MEMBERS: 'dodeel_members_v2',
-  TASKS: 'dodeel_tasks_v2',
-  ACTIVITIES: 'dodeel_activities_v2',
-  DOCUMENTS: 'dodeel_documents_v2',
-  LEARNING: 'dodeel_learning_v2',
-  REPORTS: 'dodeel_reports_v2',
-  LGS: 'dodeel_lgs_v2',
-  SETTINGS: 'dodeel_settings_v2',
-  INITIALIZED: 'dodeel_initialized_v2',
+  MEMBERS: 'dodeel_members_v4',
+  TASKS: 'dodeel_tasks_v4',
+  ACTIVITIES: 'dodeel_activities_v4',
+  DOCUMENTS: 'dodeel_documents_v4',
+  LEARNING: 'dodeel_learning_v4',
+  REPORTS: 'dodeel_reports_v4',
+  LGS: 'dodeel_lgs_v4',
+  SETTINGS: 'dodeel_settings_v4',
+  INITIALIZED: 'dodeel_initialized_v4',
 };
 
 class DataService {
