@@ -1,0 +1,6 @@
+{
+  "name": "DO-DEEL CDS MANAGER",
+  "description": "Digital Onboarders – Digital Literacy, Employability, Entrepreneurship & Leadership Mentoring internal management and engagement platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

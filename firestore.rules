@@ -1,0 +1,290 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. GLOBAL SAFETY NET: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. GLOBAL SECURITY PRIMITIVES & HELPERS
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Bootstrapped Admin (User email from runtime: jomaschools@gmail.com) or verified CDS_COORDINATOR
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'jomaschools@gmail.com' && request.auth.token.email_verified == true) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'CDS_COORDINATOR')
+      );
+    }
+
+    function isStateLeadership() {
+      return isSignedIn() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in [
+           'CDS_COORDINATOR',
+           'STATE_PRESIDENT',
+           'VP_GROWTH',
+           'VP_ACCOUNTABILITY',
+           'VP_COMMUNITY_IMPACT'
+         ])
+      );
+    }
+
+    function isExecutiveOrAbove() {
+      return isSignedIn() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role != 'MEMBER')
+      );
+    }
+
+    function getUserLG() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lgId;
+    }
+
+    function isSameLG(targetLgId) {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+        getUserLG() == targetLgId || isStateLeadership()
+      );
+    }
+
+    // 3. VALIDATION BLUEPRINTS
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'fullName', 'email', 'lgId', 'role', 'membershipStatus', 'createdAt', 'updatedAt', 'createdBy']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 150 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.lgId is string && data.lgId.size() <= 64 &&
+             data.role in ['CDS_COORDINATOR', 'STATE_PRESIDENT', 'VP_GROWTH', 'VP_ACCOUNTABILITY', 'VP_COMMUNITY_IMPACT', 'LG_PRESIDENT', 'EXECUTIVE', 'GROUP_LEADER', 'MEMBER'] &&
+             data.membershipStatus in ['ACTIVE', 'INACTIVE', 'PENDING'] &&
+             data.createdBy is string;
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll(['id', 'title', 'description', 'assignedTo', 'assignedBy', 'assignedLG', 'kpi', 'priority', 'deadline', 'manualProgress', 'createdAt', 'updatedAt', 'createdBy']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 250 &&
+             data.description is string && data.description.size() <= 5000 &&
+             data.assignedTo is string && data.assignedTo.size() <= 128 &&
+             data.assignedBy is string && data.assignedBy.size() <= 128 &&
+             data.assignedLG is string && data.assignedLG.size() <= 64 &&
+             data.kpi is string && data.kpi.size() <= 1000 &&
+             data.priority in ['LOW', 'MEDIUM', 'HIGH'] &&
+             data.manualProgress in ['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED'];
+    }
+
+    function isValidActivity(data) {
+      return data.keys().hasAll(['id', 'title', 'description', 'date', 'time', 'locationType', 'location', 'lgId', 'organizerId', 'status', 'createdAt', 'updatedAt', 'createdBy']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 250 &&
+             data.locationType in ['IN_PERSON', 'ONLINE'] &&
+             data.status in ['UPCOMING', 'COMPLETED', 'CANCELLED'];
+    }
+
+    function isValidAttendance(data) {
+      return data.keys().hasAll(['id', 'activityId', 'memberId', 'status', 'markedBy', 'markedAt', 'createdAt', 'updatedAt', 'createdBy']) &&
+             data.activityId is string && data.activityId.size() <= 128 &&
+             data.memberId is string && data.memberId.size() <= 128 &&
+             data.status in ['PRESENT', 'ABSENT'];
+    }
+
+    function isValidDocument(data) {
+      return data.keys().hasAll(['id', 'title', 'description', 'category', 'fileUrl', 'visibility', 'uploadedBy', 'createdAt', 'updatedAt', 'createdBy']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 250 &&
+             data.visibility in ['ALL', 'EXECUTIVES_ONLY', 'LEADERSHIP_ONLY'] &&
+             data.category in ['Governance', 'Executive Resources', 'Training Materials', 'Programme Guides', 'Reports & Templates', 'Forms', 'Branding', 'Other'];
+    }
+
+    function isValidLearning(data) {
+      return data.keys().hasAll(['id', 'title', 'description', 'type', 'url', 'category', 'status', 'publishedBy', 'publishedAt', 'createdAt', 'updatedAt', 'createdBy']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 250 &&
+             data.type in ['YOUTUBE', 'PDF', 'EXTERNAL_URL'] &&
+             data.status in ['PUBLISHED', 'DRAFT', 'ARCHIVED'];
+    }
+
+    function isValidMonthlyReport(data) {
+      return data.keys().hasAll(['id', 'reportingMonth', 'userId', 'lgId', 'results', 'status', 'createdAt', 'updatedAt', 'createdBy']) &&
+             data.reportingMonth is string && data.reportingMonth.size() <= 64 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.lgId is string && data.lgId.size() <= 64 &&
+             data.status in ['SUBMITTED', 'REVIEWED'];
+    }
+
+    // 4. USERS COLLECTION (PII Isolation: Only self or state leadership can read)
+    match /users/{userId} {
+      allow get: if isSignedIn() && (isOwner(userId) || isStateLeadership());
+      allow list: if isSignedIn() && isStateLeadership();
+      allow create: if isSignedIn() && isValidId(userId) && isValidUser(incoming()) && (
+        isOwner(userId) || isStateLeadership()
+      ) && (
+        isAdmin() || incoming().role == 'MEMBER'
+      );
+      allow update: if isSignedIn() && isValidId(userId) && isValidUser(incoming()) && (
+        isAdmin() ||
+        (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phone', 'profilePhoto', 'bio', 'skills', 'updatedAt'])) ||
+        (isStateLeadership() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'membershipStatus', 'assignedTeam', 'lgId', 'lgName', 'updatedAt']))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // PUBLIC USER PROFILES (Non-sensitive directory visible to signed-in members)
+    match /user_profiles/{userId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && (isOwner(userId) || isStateLeadership());
+      allow delete: if isAdmin();
+    }
+
+    // 5. LOCAL GOVERNMENTS
+    match /lgs/{lgId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // 6. TASKS & SUBCOLLECTIONS (Scoped by LG unless State Leadership)
+    match /tasks/{taskId} {
+      allow get: if isSignedIn() && (
+        isStateLeadership() ||
+        isSameLG(existing().assignedLG) ||
+        existing().assignedTo == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        isStateLeadership() ||
+        resource.data.assignedLG == getUserLG() ||
+        resource.data.assignedTo == request.auth.uid
+      );
+      allow create: if isSignedIn() && isValidId(taskId) && isValidTask(incoming()) && (
+        isStateLeadership() ||
+        (isExecutiveOrAbove() && incoming().assignedLG == getUserLG())
+      );
+      allow update: if isSignedIn() && isValidId(taskId) && isValidTask(incoming()) && (
+        isAdmin() ||
+        isStateLeadership() ||
+        // Executive can reassign or update task in their LG
+        (isExecutiveOrAbove() && existing().assignedLG == getUserLG() && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'kpi', 'priority', 'deadline', 'assignedTo', 'assignedToName', 'assignedToRole', 'manualProgress', 'updatedAt'])) ||
+        // Assignee can progress or submit result/evidence flag
+        (existing().assignedTo == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['manualProgress', 'completedAt', 'result', 'hasEvidence', 'updatedAt']))
+      );
+      allow delete: if isAdmin() || isStateLeadership();
+
+      // Task Comments & Updates Subcollection
+      match /task_updates/{updateId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && isValidId(updateId) && (
+          isStateLeadership() || isExecutiveOrAbove() || get(/databases/$(database)/documents/tasks/$(taskId)).data.assignedTo == request.auth.uid
+        );
+        allow update, delete: if isAdmin();
+      }
+
+      // Evidence Subcollection
+      match /evidence/{evidenceId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && isValidId(evidenceId) && (
+          isStateLeadership() || get(/databases/$(database)/documents/tasks/$(taskId)).data.assignedTo == request.auth.uid
+        );
+        allow update, delete: if isAdmin() || isStateLeadership();
+      }
+    }
+
+    // 7. ACTIVITIES & ATTENDANCE
+    match /activities/{activityId} {
+      allow get: if isSignedIn() && (isStateLeadership() || existing().lgId == 'ALL' || isSameLG(existing().lgId));
+      allow list: if isSignedIn() && (isStateLeadership() || resource.data.lgId == 'ALL' || resource.data.lgId == getUserLG());
+      allow create: if isSignedIn() && isValidId(activityId) && isValidActivity(incoming()) && (
+        isStateLeadership() || (isExecutiveOrAbove() && (incoming().lgId == getUserLG() || incoming().lgId == 'ALL'))
+      );
+      allow update: if isSignedIn() && isValidId(activityId) && isValidActivity(incoming()) && (
+        isStateLeadership() || (isExecutiveOrAbove() && existing().lgId == getUserLG())
+      );
+      allow delete: if isAdmin() || isStateLeadership();
+
+      // Attendance Subcollection (Keyed by memberId to mathematically prevent duplicates)
+      match /attendance/{memberId} {
+        allow get: if isSignedIn() && (
+          isStateLeadership() || isExecutiveOrAbove() || request.auth.uid == memberId
+        );
+        allow list: if isSignedIn() && (
+          isStateLeadership() || isExecutiveOrAbove() || resource.data.memberId == request.auth.uid
+        );
+        allow create, update: if isSignedIn() && isValidId(memberId) && isValidAttendance(incoming()) && (
+          isStateLeadership() || isExecutiveOrAbove()
+        );
+        allow delete: if isAdmin() || isStateLeadership();
+      }
+    }
+
+    // 8. DOCUMENTS (Access/visibility restricted: Members cannot see EXECUTIVES_ONLY or LEADERSHIP_ONLY)
+    match /documents/{docId} {
+      allow get: if isSignedIn() && (
+        isAdmin() ||
+        isStateLeadership() ||
+        existing().visibility == 'ALL' ||
+        (existing().visibility == 'EXECUTIVES_ONLY' && isExecutiveOrAbove())
+      );
+      allow list: if isSignedIn() && (
+        isAdmin() ||
+        isStateLeadership() ||
+        resource.data.visibility == 'ALL' ||
+        (resource.data.visibility == 'EXECUTIVES_ONLY' && isExecutiveOrAbove())
+      );
+      allow create, update, delete: if isAdmin() || (isStateLeadership() && request.auth.uid != null);
+    }
+
+    // 9. LEARNING RESOURCES (Only CDS Coordinator, State President, VP Growth can publish)
+    match /learning_resources/{resourceId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(resourceId) && isValidLearning(incoming()) && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['CDS_COORDINATOR', 'STATE_PRESIDENT', 'VP_GROWTH'])
+      );
+      allow delete: if isAdmin() || isStateLeadership();
+    }
+
+    // 10. MONTHLY REPORTS (Strictly restricted: Members CANNOT access administrative/impact reports)
+    match /monthly_reports/{reportId} {
+      allow get: if isSignedIn() && (
+        isStateLeadership() ||
+        (isExecutiveOrAbove() && (existing().userId == request.auth.uid || existing().lgId == getUserLG()))
+      );
+      allow list: if isSignedIn() && (
+        isStateLeadership() ||
+        (isExecutiveOrAbove() && (resource.data.userId == request.auth.uid || resource.data.lgId == getUserLG()))
+      );
+      allow create: if isSignedIn() && isValidId(reportId) && isValidMonthlyReport(incoming()) && isExecutiveOrAbove();
+      allow update: if isSignedIn() && isValidId(reportId) && isValidMonthlyReport(incoming()) && (
+        isStateLeadership() || (isExecutiveOrAbove() && existing().userId == request.auth.uid)
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 11. ANNOUNCEMENTS
+    match /announcements/{announcementId} {
+      allow read: if isSignedIn() && (
+        isStateLeadership() || resource.data.targetLG == 'ALL' || resource.data.targetLG == getUserLG()
+      );
+      allow create, update: if isSignedIn() && isValidId(announcementId) && isExecutiveOrAbove();
+      allow delete: if isAdmin() || isStateLeadership();
+    }
+  }
+}
