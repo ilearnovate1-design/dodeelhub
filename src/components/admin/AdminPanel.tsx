@@ -7,17 +7,22 @@ import { RoleBadge } from '../common/RoleBadge';
 import { StatusBadge } from '../common/StatusBadge';
 import { AccountStatusBadge } from '../common/AccountStatusBadge';
 import { MemberFormModal } from '../members/MemberFormModal';
+import { LocalGovernmentModal } from './LocalGovernmentModal';
 import {
   AlertTriangle,
   Building2,
+  Calendar,
   Check,
   CheckCircle2,
   Copy,
   Database,
   Download,
+  Edit2,
+  ExternalLink,
   Filter,
   KeyRound,
   MapPin,
+  Pencil,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -27,6 +32,7 @@ import {
   ShieldCheck,
   Sliders,
   Trash2,
+  User,
   UserCheck,
   UserX,
   Users,
@@ -63,11 +69,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ members, lgs, settings }
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // New LG form state
-  const [isAddingLg, setIsAddingLg] = useState(false);
-  const [newLgName, setNewLgName] = useState('');
-  const [newLgVenue, setNewLgVenue] = useState('');
-  const [newLgMeetingDay, setNewLgMeetingDay] = useState('Every Thursday, 10:00 AM');
+  // LG Management States
+  const [isLgModalOpen, setIsLgModalOpen] = useState(false);
+  const [lgToEdit, setLgToEdit] = useState<LocalGovernment | null>(null);
+  const [lgToDelete, setLgToDelete] = useState<LocalGovernment | null>(null);
+  const [lgSearch, setLgSearch] = useState('');
 
   // System Settings state
   const [isEditingSettings, setIsEditingSettings] = useState(false);
@@ -202,24 +208,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ members, lgs, settings }
     }
   };
 
-  // Add LG
-  const handleAddLG = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newLgName.trim()) return;
+  // Filtered LGs
+  const filteredLgs = useMemo(() => {
+    if (!lgSearch.trim()) return lgs;
+    const q = lgSearch.toLowerCase().trim();
+    return lgs.filter((lg) => {
+      const matchName = lg.name.toLowerCase().includes(q);
+      const matchVenue = (lg.meetingVenue || '').toLowerCase().includes(q);
+      const matchDay = (lg.meetingDay || '').toLowerCase().includes(q);
+      const matchPres = (lg.presidentName || '').toLowerCase().includes(q);
+      const matchState = (lg.state || '').toLowerCase().includes(q);
+      return matchName || matchVenue || matchDay || matchPres || matchState;
+    });
+  }, [lgs, lgSearch]);
 
-    const newLG: LocalGovernment = {
-      id: `lg-${Date.now()}`,
-      name: newLgName.trim(),
-      state: settings.state,
-      meetingVenue: newLgVenue.trim() || 'Council Secretariat',
-      meetingDay: newLgMeetingDay.trim(),
-      activeMemberCount: 0,
-    };
-
-    await dataService.saveLG(newLG);
-    setIsAddingLg(false);
-    setNewLgName('');
-    setNewLgVenue('');
+  const handleExecuteDeleteLg = async () => {
+    if (!lgToDelete) return;
+    setIsProcessing(true);
+    try {
+      await dataService.deleteLGAsync(lgToDelete.id);
+      setStatusMessage(`Local Government chapter "${lgToDelete.name}" deleted successfully.`);
+      setLgToDelete(null);
+      setTimeout(() => setStatusMessage(null), 5000);
+    } catch (err: any) {
+      alert(`Error deleting chapter: ${err.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleForceClearDemo = async () => {
@@ -629,90 +644,178 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ members, lgs, settings }
       {/* TAB 2: LOCAL GOVERNMENTS */}
       {activeAdminTab === 'LGS' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <h2 className="text-sm font-bold text-slate-900">Local Government Chapters</h2>
-              <p className="text-xs text-slate-500">
-                Meeting venues, scheduled meeting days, and leadership coverage
+              <div className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-purple-700" />
+                <h2 className="text-sm sm:text-base font-bold text-slate-900">Local Government Chapters</h2>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
+                  {lgs.length} Chapters
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Manage meeting venues, scheduled meeting days, appointed chapter leadership, and member allocations
               </p>
             </div>
+
             <button
               type="button"
-              onClick={() => setIsAddingLg(!isAddingLg)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-colors"
+              onClick={() => {
+                setLgToEdit(null);
+                setIsLgModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-900 hover:bg-purple-950 text-white rounded-xl text-xs font-bold shadow-xs transition-colors shrink-0"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-4 h-4" />
               <span>Add Chapter</span>
             </button>
           </div>
 
-          {/* Add LG Form */}
-          {isAddingLg && (
-            <form onSubmit={handleAddLG} className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-              <h3 className="text-xs font-bold text-slate-900">Create New Local Government</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <input
-                  type="text"
-                  required
-                  placeholder="LG Name (e.g. Badagry LG)"
-                  value={newLgName}
-                  onChange={(e) => setNewLgName(e.target.value)}
-                  className="text-xs bg-white border border-slate-300 rounded-lg p-2"
-                />
-                <input
-                  type="text"
-                  required
-                  placeholder="Meeting Venue"
-                  value={newLgVenue}
-                  onChange={(e) => setNewLgVenue(e.target.value)}
-                  className="text-xs bg-white border border-slate-300 rounded-lg p-2"
-                />
-                <input
-                  type="text"
-                  required
-                  placeholder="Meeting Schedule"
-                  value={newLgMeetingDay}
-                  onChange={(e) => setNewLgMeetingDay(e.target.value)}
-                  className="text-xs bg-white border border-slate-300 rounded-lg p-2"
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddingLg(false)}
-                  className="text-xs text-slate-500 px-3 py-1"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="text-xs font-bold text-white bg-purple-600 px-3 py-1 rounded-lg"
-                >
-                  Save LG
-                </button>
-              </div>
-            </form>
-          )}
+          {/* Search Chapters Bar */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              value={lgSearch}
+              onChange={(e) => setLgSearch(e.target.value)}
+              placeholder="Search chapters by LG name, meeting venue, schedule, or president..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 pl-9 pr-3 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-purple-600 transition-all"
+            />
+          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {lgs.map((lg) => (
-              <div
-                key={lg.id}
-                className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-xs"
-              >
-                <div className="flex items-start justify-between">
-                  <h3 className="font-bold text-slate-900 text-sm">{lg.name}</h3>
-                  <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
-                    {lg.activeMemberCount} Active Members
-                  </span>
-                </div>
-                <p className="text-slate-600">
-                  President: <strong>{lg.presidentName || 'To be appointed'}</strong>
-                </p>
-                <p className="text-slate-500">Venue: {lg.meetingVenue}</p>
-                <p className="text-slate-500">Day: {lg.meetingDay}</p>
+          {/* Chapters Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {filteredLgs.length === 0 ? (
+              <div className="col-span-full py-10 text-center text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                <Building2 className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                <p className="font-semibold text-xs text-slate-600">No chapters matching your search</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Try searching with a different term or create a new chapter.</p>
               </div>
-            ))}
+            ) : (
+              filteredLgs.map((lg) => {
+                // Calculate dynamic member count for this LG
+                const chapterMembers = members.filter((m) => m.lgId === lg.id);
+                const activeCount = chapterMembers.filter((m) => (m.accountStatus || 'ACTIVE') === 'ACTIVE').length;
+                const presidentMember = members.find((m) => m.id === lg.presidentId);
+
+                return (
+                  <div
+                    key={lg.id}
+                    className="p-4 bg-slate-50/70 hover:bg-white rounded-2xl border border-slate-200 hover:border-purple-300 transition-all flex flex-col justify-between space-y-3.5 shadow-2xs hover:shadow-xs group"
+                  >
+                    <div className="space-y-2.5">
+                      {/* Chapter Title & Member Badge */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h3 className="font-black text-slate-900 text-sm tracking-tight group-hover:text-purple-900 transition-colors">
+                              {lg.name}
+                            </h3>
+                            <span className="text-[10px] font-semibold text-slate-500 bg-slate-200/70 px-1.5 py-0.2 rounded">
+                              {lg.state || 'Ondo State'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-lg shrink-0 border border-emerald-200">
+                          {activeCount} Active {activeCount === 1 ? 'Member' : 'Members'}
+                        </span>
+                      </div>
+
+                      {/* Appointed President */}
+                      <div className="p-2.5 bg-white rounded-xl border border-slate-200/80 space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Chapter Leadership
+                        </span>
+                        {lg.presidentName || presidentMember ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 font-bold text-[10px]">
+                              {(lg.presidentName || presidentMember?.fullName || 'P').charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-slate-900 text-xs truncate">
+                                {lg.presidentName || presidentMember?.fullName}
+                              </p>
+                              <p className="text-[10px] text-purple-700 font-medium truncate">
+                                LG President {presidentMember?.phone ? `• ${presidentMember.phone}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-amber-700 bg-amber-50/70 p-1 rounded text-[11px] font-semibold">
+                            <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                            <span>President Not Appointed (Vacant)</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Meeting Venue & Schedule */}
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex items-start gap-2 text-slate-600">
+                          <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                          <div className="min-w-0">
+                            <span className="text-[10px] font-semibold text-slate-400 block">Meeting Venue:</span>
+                            <span className="font-medium text-slate-800 text-[11px] line-clamp-2">
+                              {lg.meetingVenue || 'Council Secretariat'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-2 text-slate-600">
+                          <Calendar className="w-3.5 h-3.5 text-purple-600 shrink-0 mt-0.5" />
+                          <div className="min-w-0">
+                            <span className="text-[10px] font-semibold text-slate-400 block">Schedule:</span>
+                            <span className="font-medium text-slate-800 text-[11px]">
+                              {lg.meetingDay || 'Every Thursday, 10:00 AM'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Chapter Card Actions */}
+                    <div className="pt-3 border-t border-slate-200/70 flex items-center justify-between gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveAdminTab('USERS');
+                          setFilterLg(lg.id);
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-[11px] font-semibold transition-colors"
+                        title="Filter user list to this chapter"
+                      >
+                        <Users className="w-3 h-3 text-slate-500" />
+                        <span>Members ({chapterMembers.length})</span>
+                      </button>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLgToEdit(lg);
+                            setIsLgModalOpen(true);
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded-lg text-[11px] font-bold transition-colors"
+                          title="Edit Chapter details, venue, schedule, or president"
+                        >
+                          <Pencil className="w-3 h-3 text-purple-700" />
+                          <span>Edit Chapter</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setLgToDelete(lg)}
+                          className="p-1.5 text-rose-600 hover:bg-rose-50 hover:text-rose-800 border border-transparent hover:border-rose-200 rounded-lg transition-colors"
+                          title="Delete Chapter"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}
@@ -1118,11 +1221,84 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ members, lgs, settings }
         </div>
       )}
 
+      {/* SENSITIVE ACTION MODAL 6: DELETE LG CHAPTER */}
+      {lgToDelete && (
+        <div className="fixed inset-0 z-60 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-2.5 text-rose-700 font-bold text-sm">
+              <Trash2 className="w-5 h-5 shrink-0" />
+              <span>Confirm Chapter Deletion</span>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete the <strong>{lgToDelete.name}</strong> chapter?
+            </p>
+
+            {(() => {
+              const assignedMembersCount = members.filter((m) => m.lgId === lgToDelete.id).length;
+              if (assignedMembersCount > 0) {
+                return (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1">
+                    <p className="font-bold flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>{assignedMembersCount} Members Assigned to this Chapter</span>
+                    </p>
+                    <p className="text-[11px] text-amber-800">
+                      Deleting this chapter will leave these members without an active chapter assignment. We recommend reassigning members first.
+                    </p>
+                  </div>
+                );
+              }
+              return (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600">
+                  No active members are currently assigned to this chapter. It is safe to remove.
+                </div>
+              );
+            })()}
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setLgToDelete(null)}
+                disabled={isProcessing}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteDeleteLg}
+                disabled={isProcessing}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors"
+              >
+                {isProcessing ? 'Deleting...' : 'Delete Chapter'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MEMBER REGISTRATION & INVITATION MODAL */}
       <MemberFormModal
         isOpen={isAddMemberOpen}
         onClose={() => setIsAddMemberOpen(false)}
         lgs={lgs}
+      />
+
+      {/* LOCAL GOVERNMENT CHAPTER CREATE & EDIT MODAL */}
+      <LocalGovernmentModal
+        isOpen={isLgModalOpen}
+        onClose={() => {
+          setIsLgModalOpen(false);
+          setLgToEdit(null);
+        }}
+        lgToEdit={lgToEdit}
+        members={members}
+        defaultState={settings.state || 'Ondo State'}
+        onSaved={(msg) => {
+          setStatusMessage(msg);
+          setTimeout(() => setStatusMessage(null), 5000);
+        }}
       />
     </div>
   );

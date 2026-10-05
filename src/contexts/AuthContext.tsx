@@ -18,6 +18,7 @@ interface AuthContextType {
   isSuspended: boolean;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, data: { fullName: string, phone: string, lgId: string, lgName: string }) => Promise<void>;
   activateAccount: (email: string, invitationCode: string, password: string) => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -124,47 +125,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const register = async (email: string, password: string, data: { fullName: string, phone: string, lgId: string, lgName: string }) => {
+    const settings = dataService.getSettings();
+    const cred = await createUserWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+    
+    await dataService.registerMemberAsync(cred.user.uid, {
+      ...data,
+      email: email.trim().toLowerCase(),
+      state: settings.state,
+      operationalBatch: settings.operationalBatch,
+    });
+  };
+
   /**
    * Controlled Member Activation Flow:
-   * Validates invitation code, creates Firebase Auth credentials, and activates Firestore profile
+   * 1. Authenticate the user (Sign in or Create)
+   * 2. Validate invitation / link profile in Firestore
    */
   const activateAccount = async (email: string, invitationCode: string, password: string) => {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedCode = invitationCode.trim().toUpperCase();
 
-    // 1. Verify invitation validity
-    const pending = dataService.findPendingMemberByInvite(normalizedEmail, normalizedCode);
-    if (!pending && !isSuperAdminEmail(normalizedEmail)) {
-      // Also check if user exists in Firestore directly
-      const candidate = members.find(m => m.email.toLowerCase() === normalizedEmail);
-      if (candidate && candidate.accountStatus === 'ACTIVE') {
-        throw new Error('This account has already been activated. Please sign in with your email and password.');
-      }
-      if (candidate && candidate.accountStatus === 'SUSPENDED') {
-        throw new Error('This account is suspended. Please contact your Local Government President or CDS Coordinator.');
-      }
-      throw new Error('Invalid invitation code or email. Please check your invitation message or contact your LG President.');
-    }
-
-    // 2. Create the member's Firebase Authentication account (passwords handled strictly by Firebase Auth!)
+    // 1. Authenticate FIRST to get Firestore read permission
     let userCredential;
     try {
       userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
     } catch (authError: any) {
       if (authError.code === 'auth/email-already-in-use') {
-        // If already exists in Firebase Auth, attempt sign-in to complete profile link
         try {
           userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
         } catch {
-          throw new Error('An account with this email already exists in authentication. If you forgot your password, please use the "Forgot Password" link.');
+          throw new Error('An account with this email already exists. Please use the "Forgot Password" link if you cannot sign in.');
         }
       } else {
         throw authError;
       }
     }
 
-    // 3. Connect Firebase UID with the member profile & set account status to ACTIVE
-    await dataService.activateMemberAccountAsync(normalizedEmail, normalizedCode, userCredential.user.uid);
+    // 2. Link the Firebase Auth user to the Member profile
+    try {
+      await dataService.activateMemberAccountAsync(normalizedEmail, normalizedCode, userCredential.user.uid);
+    } catch (err: any) {
+      // 3. Cleanup: If linking fails (wrong code/no profile), log them out so they can try again
+      await signOut(auth);
+      throw err;
+    }
   };
 
   const sendPasswordReset = async (email: string) => {
@@ -206,6 +211,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isSuspended,
         loading,
         login,
+        register,
         activateAccount,
         sendPasswordReset,
         logout,

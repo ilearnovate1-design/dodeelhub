@@ -25,13 +25,14 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
     
-    // Auth tokens do not contain roles. We look up the member document.
-    function getMemberData(userId) {
-      return get(/databases/$(database)/documents/members/$(userId)).data;
+    // Safely check if a member profile document exists before reading
+    function memberExists(userId) {
+      return isSignedIn() && exists(/databases/$(database)/documents/members/$(userId));
     }
-    
+
+    // Safely retrieve user role from Firestore, defaulting to MEMBER if document does not exist yet
     function getUserRole() {
-      return getMemberData(request.auth.uid).role;
+      return memberExists(request.auth.uid) ? get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role : 'MEMBER';
     }
     
     function isCoordinator() {
@@ -62,7 +63,8 @@ service cloud.firestore {
     function isActiveUser() {
       return isSignedIn() && (
         isCoordinator() ||
-        getMemberData(request.auth.uid).accountStatus != 'SUSPENDED'
+        !memberExists(request.auth.uid) ||
+        get(/databases/$(database)/documents/members/$(request.auth.uid)).data.accountStatus != 'SUSPENDED'
       );
     }
 
@@ -71,7 +73,7 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     
     function isValidMember(data) {
-      return data.keys().hasAll(['fullName', 'email', 'lgId', 'role', 'membershipStatus']) &&
+      return data.keys().hasAll(['fullName', 'email', 'lgId', 'role', 'membershipStatus', 'accountStatus']) &&
              data.fullName is string && data.fullName.size() <= 120 &&
              data.email is string && data.email.size() <= 120 &&
              data.role in [
@@ -102,11 +104,11 @@ service cloud.firestore {
       allow read: if isSignedIn(); // Directory and leadership lookups
       
       // Controlled creation: only authorized leaders (CDS Coordinator, State President, LG President)
-      // or an activating user claiming their own UID matching their registered invitation
+      // or an activating user claiming their own UID (Self-Registration or Invitation Activation)
       allow create: if isSignedIn() && (
         isCoordinator() || 
         getUserRole() in ['STATE_PRESIDENT', 'LG_PRESIDENT'] ||
-        isOwner(userId)
+        (isOwner(userId) && incoming().role == 'MEMBER' && incoming().accountStatus == 'ACTIVE')
       ) && isValidMember(incoming());
       
       allow update: if isSignedIn() && (
@@ -153,7 +155,7 @@ service cloud.firestore {
 
     // LOCAL GOVERNMENTS
     match /lgs/{lgId} {
-      allow read: if isSignedIn();
+      allow read: if true; // Public list for registration selection
       allow write: if isCoordinator() || isLeadership();
     }
 

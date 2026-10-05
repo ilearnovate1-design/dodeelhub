@@ -1,25 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { 
-  Shield, 
-  Mail, 
-  Lock, 
-  LogIn, 
-  Sparkles, 
-  KeyRound, 
-  CheckCircle2, 
-  AlertCircle, 
-  ArrowRight, 
-  ArrowLeft,
-  UserCheck,
-  Send,
-  Building2
-} from 'lucide-react';
+import { Building2, UserPlus, Send, ArrowRight, ArrowLeft, KeyRound, Mail, Lock, LogIn, AlertCircle, CheckCircle2, Shield, UserCheck } from 'lucide-react';
+import { dataService } from '../../services/dataService';
+import { LocalGovernment } from '../../types';
 
-type AuthViewMode = 'LOGIN' | 'ACTIVATE' | 'FORGOT_PASSWORD';
+type AuthViewMode = 'LOGIN' | 'REGISTER' | 'ACTIVATE' | 'FORGOT_PASSWORD';
 
 export const LoginView: React.FC = () => {
-  const { login, activateAccount, sendPasswordReset } = useAuth();
+  const { login, register, activateAccount, sendPasswordReset } = useAuth();
 
   const [mode, setMode] = useState<AuthViewMode>('LOGIN');
   const [email, setEmail] = useState('');
@@ -27,9 +15,31 @@ export const LoginView: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [invitationCode, setInvitationCode] = useState('');
 
+  // Registration specific state
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [selectedLgId, setSelectedLgId] = useState('');
+  const [availableLgs, setAvailableLgs] = useState<LocalGovernment[]>([]);
+
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Fetch LGs for registration
+  useEffect(() => {
+    const fetchLgs = async () => {
+      try {
+        const lgs = await dataService.getLGsAsync();
+        setAvailableLgs(lgs);
+        if (lgs.length > 0 && !selectedLgId) {
+          setSelectedLgId(lgs[0].id);
+        }
+      } catch (err) {
+        console.error('Error fetching LGs:', err);
+      }
+    };
+    fetchLgs();
+  }, [selectedLgId]);
 
   // Check URL query parameters for direct invitation links: ?activate=true&email=...&code=...
   useEffect(() => {
@@ -63,6 +73,43 @@ export const LoginView: React.FC = () => {
       } else {
         setError(err.message || 'Authentication failed. Please verify your credentials.');
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMessage('');
+
+    if (!fullName.trim() || !email.trim() || !selectedLgId) {
+      setError('Please fill in all required fields.');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const lg = availableLgs.find(l => l.id === selectedLgId) || availableLgs[0];
+      await register(email, password, {
+        fullName,
+        phone,
+        lgId: lg.id,
+        lgName: lg.name
+      });
+      setSuccessMessage('Registration successful! Redirecting to dashboard...');
+    } catch (err: any) {
+      setError(err.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -143,7 +190,7 @@ export const LoginView: React.FC = () => {
         {/* Main Card */}
         <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 sm:p-8 space-y-5">
           {/* Mode Switcher Tabs */}
-          <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-2xl text-xs font-bold">
+          <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-2xl text-[10px] sm:text-xs font-bold">
             <button
               type="button"
               onClick={() => {
@@ -162,17 +209,32 @@ export const LoginView: React.FC = () => {
             <button
               type="button"
               onClick={() => {
+                setMode('REGISTER');
+                setError('');
+                setSuccessMessage('');
+              }}
+              className={`py-2 rounded-xl transition-all ${
+                mode === 'REGISTER'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Join CDS
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setMode('ACTIVATE');
                 setError('');
                 setSuccessMessage('');
               }}
               className={`py-2 rounded-xl transition-all ${
                 mode === 'ACTIVATE'
-                  ? 'bg-emerald-600 text-white shadow-sm'
+                  ? 'bg-amber-600 text-white shadow-sm'
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              Activate Account
+              Activate
             </button>
           </div>
 
@@ -251,24 +313,142 @@ export const LoginView: React.FC = () => {
               {/* Invitation Help */}
               <div className="text-center pt-2 border-t border-slate-100">
                 <p className="text-xs text-slate-500">
-                  New member awaiting first login?{' '}
+                  New here?{' '}
                   <button
                     type="button"
                     onClick={() => {
-                      setMode('ACTIVATE');
+                      setMode('REGISTER');
                       setError('');
                       setSuccessMessage('');
                     }}
                     className="font-bold text-emerald-700 hover:underline"
                   >
-                    Activate Invitation Code
+                    Register for CDS
                   </button>
                 </p>
               </div>
             </form>
           )}
 
-          {/* ----------------- MODE 2: ACTIVATE ACCOUNT ----------------- */}
+          {/* ----------------- MODE 2: REGISTER ----------------- */}
+          {mode === 'REGISTER' && (
+            <form onSubmit={handleRegisterSubmit} className="space-y-4">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-900 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <UserPlus className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <span>Join the CDS Directorate</span>
+                </p>
+                <p className="text-[10px] text-emerald-800/80 leading-relaxed">
+                  Self-registration allows you to join the digital onboarding mission. After registration, update your profile in the dashboard.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Full Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Babajide Daniel"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Email Address <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@email.com"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+234..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Local Government (LG Chapter) <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                  <select
+                    required
+                    value={selectedLgId}
+                    onChange={(e) => setSelectedLgId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-3.5 text-xs focus:ring-2 focus:ring-emerald-500 outline-none transition-all appearance-none"
+                  >
+                    {availableLgs.map((lg) => (
+                      <option key={lg.id} value={lg.id}>
+                        {lg.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Create Password <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Min 6 chars"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Confirm Password <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white font-bold py-3 rounded-xl text-xs transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 group"
+              >
+                <span>{loading ? 'Creating Account...' : 'Register for CDS'}</span>
+                {!loading && <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />}
+              </button>
+            </form>
+          )}
+
+          {/* ----------------- MODE 3: ACTIVATE ACCOUNT ----------------- */}
           {mode === 'ACTIVATE' && (
             <form onSubmit={handleActivateSubmit} className="space-y-4">
               <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-900 space-y-1">

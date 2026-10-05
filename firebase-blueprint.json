@@ -30,7 +30,7 @@
         "updatedAt": { "type": "string" },
         "createdBy": { "type": "string" }
       },
-      "required": ["fullName", "email", "lgId", "role", "membershipStatus"]
+      "required": ["fullName", "email", "lgId", "role", "membershipStatus", "accountStatus"]
     },
     "Task": {
       "title": "Task / Responsibility",

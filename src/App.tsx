@@ -74,6 +74,9 @@ const MainApp: React.FC = () => {
 
   // Production Environment Initialization & Reactive Sync
   useEffect(() => {
+    // 0. Seed initial metadata and base LGs if not already present
+    dataService.seedInitialData().catch(err => console.error('Error seeding data:', err));
+
     const init = async () => {
       // Ensure the production environment is purged of demo records and verified
       if (currentUser && canAccessAdmin(currentRole)) {
@@ -211,7 +214,6 @@ const MainApp: React.FC = () => {
       <Navbar
         currentTab={currentTab}
         onSelectTab={(tab) => setCurrentTab(tab)}
-        onOpenRoleSwitcher={() => setIsRoleSwitcherOpen(true)}
       />
 
       {/* Main Content Area */}

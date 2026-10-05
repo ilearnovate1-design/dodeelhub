@@ -14,6 +14,7 @@ import {
   MembershipStatus,
 } from '../types';
 import { calculateTaskStatus, enrichTaskWithStatus } from '../utils/taskStatus';
+import { isSuperAdminEmail } from '../utils/permissions';
 import {
   doc,
   getDoc,
@@ -366,8 +367,63 @@ class DataService {
     return this.cache.lgs;
   }
 
+  public getLGsAsync = async (): Promise<LocalGovernment[]> => {
+    const q = query(collection(db, 'lgs'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as LocalGovernment));
+  };
+
   public async saveLG(lg: LocalGovernment): Promise<void> {
-    await setDoc(doc(db, 'lgs', lg.id), lg);
+    const updatedLG = {
+      ...lg,
+      updatedAt: new Date().toISOString(),
+    };
+    await setDoc(doc(db, 'lgs', lg.id), updatedLG);
+
+    // If LG name changed, sync member records with this lgId
+    const membersInLG = this.cache.members.filter((m) => m.lgId === lg.id);
+    for (const member of membersInLG) {
+      if (member.lgName !== lg.name) {
+        try {
+          await updateDoc(doc(db, 'members', member.id), {
+            lgName: lg.name,
+            updatedAt: new Date().toISOString(),
+          });
+          await updateDoc(doc(db, 'users', member.id), {
+            lgName: lg.name,
+            updatedAt: new Date().toISOString(),
+          });
+        } catch {}
+      }
+    }
+  }
+
+  public async deleteLGAsync(id: string): Promise<void> {
+    await deleteDoc(doc(db, 'lgs', id));
+  }
+
+  public async appointLGPresidentAsync(lgId: string, memberId?: string, syncRole = true): Promise<void> {
+    let presidentName = '';
+    if (memberId) {
+      const member = await this.getMemberByIdAsync(memberId);
+      if (member) {
+        presidentName = member.fullName;
+        if (
+          syncRole &&
+          member.role !== 'LG_PRESIDENT' &&
+          member.role !== 'CDS_COORDINATOR' &&
+          member.role !== 'STATE_PRESIDENT'
+        ) {
+          await this.updateMemberRoleAsync(member.id, 'LG_PRESIDENT');
+        }
+      }
+    }
+
+    await updateDoc(doc(db, 'lgs', lgId), {
+      presidentId: memberId || '',
+      presidentName: presidentName || '',
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   // --- MEMBERS ---
@@ -460,23 +516,53 @@ class DataService {
     );
   }
 
-  public async activateMemberAccountAsync(email: string, code: string, uid: string): Promise<Member> {
+  public activateMemberAccountAsync = async (email: string, code: string, uid: string): Promise<Member> => {
     const normalizedEmail = email.toLowerCase().trim();
-    const pendingMember = this.findPendingMemberByInvite(normalizedEmail, code);
+    const normalizedCode = code.toUpperCase().trim();
+
+    // 1. Check if user already has an active profile
+    const existingActive = this.cache.members.find(m => m.email.toLowerCase().trim() === normalizedEmail && m.accountStatus === 'ACTIVE');
+    if (existingActive) {
+      // If UID mismatch (rare), update it
+      if (existingActive.id !== uid) {
+        const updated = { ...existingActive, id: uid, uid, updatedAt: new Date().toISOString() };
+        await this.saveMemberAsync(updated);
+        await deleteDoc(doc(db, 'members', existingActive.id));
+        return updated;
+      }
+      return existingActive;
+    }
+
+    // 2. Look for pending invitation
+    const pendingMember = this.findPendingMemberByInvite(normalizedEmail, normalizedCode);
 
     if (!pendingMember) {
+      // Try direct server query if cache is stale or empty
       const q = query(
         collection(db, 'members'),
-        where('email', '==', normalizedEmail),
-        where('accountStatus', '==', 'PENDING')
+        where('email', '==', normalizedEmail)
       );
       const snapshot = await getDocs(q);
+      
       const docMatch = snapshot.docs.find((d) => {
         const data = d.data() as Member;
-        return data.invitationCode?.toUpperCase().trim() === code.toUpperCase().trim();
+        // Accept if code matches OR if user is a designated super admin
+        const codeMatches = data.invitationCode?.toUpperCase().trim() === normalizedCode;
+        const isSuper = isSuperAdminEmail(normalizedEmail);
+        return (codeMatches && data.accountStatus === 'PENDING') || isSuper;
       });
 
       if (!docMatch) {
+        // If the user is a designated super admin, we can auto-provision them even if no invite exists
+        if (isSuperAdminEmail(normalizedEmail)) {
+          console.log(`Auto-provisioning missing super admin record during activation: ${normalizedEmail}`);
+          await this.ensureSuperAdminUser(normalizedEmail, normalizedEmail.includes('joma') ? 'Joma Schools Admin' : 'Kolawole (Super Admin)', uid);
+          
+          const provisioned = await this.getMemberByIdAsync(uid);
+          if (!provisioned) throw new Error('Failed to provision super admin record.');
+          return provisioned;
+        }
+        
         throw new Error('Invalid invitation code or email. Please verify with your LG President or CDS Coordinator.');
       }
 
@@ -499,6 +585,7 @@ class DataService {
       try {
         await setDoc(doc(db, 'users', uid), activatedMember);
       } catch {}
+      
       if (oldDocId !== uid) {
         await deleteDoc(doc(db, 'members', oldDocId));
         try {
@@ -532,7 +619,7 @@ class DataService {
       } catch {}
     }
     return activatedMember;
-  }
+  };
 
   public async suspendMemberAsync(memberId: string): Promise<void> {
     await updateDoc(doc(db, 'members', memberId), {
@@ -625,7 +712,7 @@ class DataService {
     }
   }
 
-  public async saveMemberAsync(member: Member): Promise<void> {
+  public saveMemberAsync = async (member: Member): Promise<void> => {
     await setDoc(doc(db, 'members', member.id), member);
     try {
       await setDoc(doc(db, 'users', member.id), member);
@@ -647,7 +734,42 @@ class DataService {
         });
       }
     }
-  }
+  };
+
+  public registerMemberAsync = async (
+    uid: string,
+    data: {
+      fullName: string;
+      email: string;
+      phone: string;
+      lgId: string;
+      lgName: string;
+      state: string;
+      operationalBatch: string;
+    }
+  ): Promise<Member> => {
+    const newMember: Member = {
+      id: uid,
+      uid,
+      fullName: data.fullName.trim(),
+      email: data.email.toLowerCase().trim(),
+      phone: data.phone.trim(),
+      lgId: data.lgId,
+      lgName: data.lgName,
+      state: data.state,
+      role: 'MEMBER',
+      membershipStatus: 'ACTIVE',
+      accountStatus: 'ACTIVE',
+      dateJoined: new Date().toISOString().split('T')[0],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      skills: [],
+      requiresProfileUpdate: true,
+    };
+
+    await this.saveMemberAsync(newMember);
+    return newMember;
+  };
 
   public async deleteMember(id: string): Promise<void> {
     const member = await this.getMemberByIdAsync(id);
