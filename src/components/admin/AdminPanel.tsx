@@ -1,0 +1,1376 @@
+import React, { useState, useMemo } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
+import { dataService } from '../../services/dataService';
+import { LocalGovernment, Member, SystemSettings, UserRole } from '../../types';
+import { ROLE_LABELS } from '../../utils/permissions';
+import { RoleBadge } from '../common/RoleBadge';
+import { StatusBadge } from '../common/StatusBadge';
+import { AccountStatusBadge } from '../common/AccountStatusBadge';
+import { MemberFormModal } from '../members/MemberFormModal';
+import { LocalGovernmentModal } from './LocalGovernmentModal';
+import {
+  AlertTriangle,
+  Building2,
+  Calendar,
+  Check,
+  CheckCircle2,
+  Copy,
+  Database,
+  Download,
+  Edit2,
+  ExternalLink,
+  Filter,
+  KeyRound,
+  MapPin,
+  Pencil,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Sliders,
+  Trash2,
+  User,
+  UserCheck,
+  UserX,
+  Users,
+  Youtube,
+} from 'lucide-react';
+
+interface AdminPanelProps {
+  members: Member[];
+  lgs: LocalGovernment[];
+  settings: SystemSettings;
+}
+
+export const AdminPanel: React.FC<AdminPanelProps> = ({ members, lgs, settings }) => {
+  const { currentUser, currentRole } = useAuth();
+
+  const [activeAdminTab, setActiveAdminTab] = useState<'USERS' | 'LGS' | 'SYSTEM'>('USERS');
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  // Users Filter & Search
+  const [userSearch, setUserSearch] = useState('');
+  const [filterLg, setFilterLg] = useState('ALL');
+  const [filterAccountStatus, setFilterAccountStatus] = useState('ALL');
+  const [filterRole, setFilterRole] = useState('ALL');
+
+  // Register & Invite Modal
+  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+
+  // Sensitive Action Confirmation States
+  const [confirmSuspendMember, setConfirmSuspendMember] = useState<Member | null>(null);
+  const [confirmReactivateMember, setConfirmReactivateMember] = useState<Member | null>(null);
+  const [changeRoleTarget, setChangeRoleTarget] = useState<{ member: Member; newRole: UserRole } | null>(null);
+  const [changeLgTarget, setChangeLgTarget] = useState<{ member: Member; newLgId: string } | null>(null);
+  const [resendInviteInfo, setResendInviteInfo] = useState<{ member: Member; code: string; url: string } | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  // LG Management States
+  const [isLgModalOpen, setIsLgModalOpen] = useState(false);
+  const [lgToEdit, setLgToEdit] = useState<LocalGovernment | null>(null);
+  const [lgToDelete, setLgToDelete] = useState<LocalGovernment | null>(null);
+  const [lgSearch, setLgSearch] = useState('');
+
+  // System Settings state
+  const [isEditingSettings, setIsEditingSettings] = useState(false);
+  const [editSecretariat, setEditSecretariat] = useState(settings.stateSecretariat);
+  const [editBatch, setEditBatch] = useState(settings.operationalBatch);
+  const [editBatches, setEditBatches] = useState<string[]>(settings.operationalBatches || []);
+  const [newBatchToAdd, setNewBatchToAdd] = useState('');
+  const [editYtUrl, setEditYtUrl] = useState(settings.youtubeChannelUrl || 'https://www.youtube.com/@DODEEL-CDS');
+  const [editYtName, setEditYtName] = useState(settings.youtubeChannelName || 'DO-DEEL CDS Official Channel');
+
+  // Sync edit state when settings prop changes (e.g. after reset)
+  React.useEffect(() => {
+    if (!isEditingSettings) {
+      setEditSecretariat(settings.stateSecretariat);
+      setEditBatch(settings.operationalBatch);
+      setEditBatches(settings.operationalBatches || []);
+      setEditYtUrl(settings.youtubeChannelUrl || 'https://www.youtube.com/@DODEEL-CDS');
+      setEditYtName(settings.youtubeChannelName || 'DO-DEEL CDS Official Channel');
+    }
+  }, [settings, isEditingSettings]);
+
+  // Filtered members for admin table
+  const filteredUsers = useMemo(() => {
+    return members.filter((m) => {
+      if (filterLg !== 'ALL' && m.lgId !== filterLg) return false;
+      if (filterAccountStatus !== 'ALL' && (m.accountStatus || 'ACTIVE') !== filterAccountStatus) return false;
+      if (filterRole !== 'ALL' && m.role !== filterRole) return false;
+
+      if (userSearch.trim()) {
+        const q = userSearch.toLowerCase();
+        const matchesName = m.fullName.toLowerCase().includes(q);
+        const matchesEmail = m.email.toLowerCase().includes(q);
+        const matchesPhone = (m.phone || '').toLowerCase().includes(q);
+        const matchesCode = (m.stateCode || '').toLowerCase().includes(q);
+        const matchesInvite = (m.invitationCode || '').toLowerCase().includes(q);
+        if (!matchesName && !matchesEmail && !matchesPhone && !matchesCode && !matchesInvite) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [members, filterLg, filterAccountStatus, filterRole, userSearch]);
+
+  // Statistics
+  const totalCount = members.length;
+  const activeCount = members.filter((m) => (m.accountStatus || 'ACTIVE') === 'ACTIVE').length;
+  const pendingCount = members.filter((m) => m.accountStatus === 'PENDING').length;
+  const suspendedCount = members.filter((m) => m.accountStatus === 'SUSPENDED').length;
+
+  // Sensitive action: Suspend account
+  const handleExecuteSuspend = async () => {
+    if (!confirmSuspendMember) return;
+    setIsProcessing(true);
+    try {
+      await dataService.suspendMemberAsync(confirmSuspendMember.id);
+      setStatusMessage(`Account access suspended for ${confirmSuspendMember.fullName}. Historical records remain intact.`);
+      setConfirmSuspendMember(null);
+      setTimeout(() => setStatusMessage(null), 5000);
+    } catch (err: any) {
+      alert(`Error suspending account: ${err.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Sensitive action: Reactivate account
+  const handleExecuteReactivate = async () => {
+    if (!confirmReactivateMember) return;
+    setIsProcessing(true);
+    try {
+      await dataService.reactivateMemberAsync(confirmReactivateMember.id);
+      setStatusMessage(`Account access successfully reactivated for ${confirmReactivateMember.fullName}.`);
+      setConfirmReactivateMember(null);
+      setTimeout(() => setStatusMessage(null), 5000);
+    } catch (err: any) {
+      alert(`Error reactivating account: ${err.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Sensitive action: Change role
+  const handleExecuteChangeRole = async () => {
+    if (!changeRoleTarget) return;
+    setIsProcessing(true);
+    try {
+      await dataService.updateMemberRoleAsync(changeRoleTarget.member.id, changeRoleTarget.newRole);
+      setStatusMessage(`Role for ${changeRoleTarget.member.fullName} updated to ${ROLE_LABELS[changeRoleTarget.newRole]}.`);
+      setChangeRoleTarget(null);
+      setTimeout(() => setStatusMessage(null), 5000);
+    } catch (err: any) {
+      alert(`Error updating role: ${err.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Sensitive action: Change LG
+  const handleExecuteChangeLg = async () => {
+    if (!changeLgTarget) return;
+    const targetLg = lgs.find((l) => l.id === changeLgTarget.newLgId);
+    if (!targetLg) return;
+
+    setIsProcessing(true);
+    try {
+      await dataService.updateMemberLGAsync(changeLgTarget.member.id, targetLg.id, targetLg.name);
+      setStatusMessage(`Chapter reassigned to ${targetLg.name} for ${changeLgTarget.member.fullName}.`);
+      setChangeLgTarget(null);
+      setTimeout(() => setStatusMessage(null), 5000);
+    } catch (err: any) {
+      alert(`Error reassigning chapter: ${err.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Sensitive action: Resend invitation
+  const handleResendInvitation = async (member: Member) => {
+    setIsProcessing(true);
+    try {
+      const res = await dataService.resendInvitationAsync(member.id);
+      const url = `${window.location.origin}?activate=true&email=${encodeURIComponent(
+        member.email
+      )}&code=${encodeURIComponent(res.invitationCode)}`;
+      setResendInviteInfo({
+        member: { ...member, invitationCode: res.invitationCode, accountStatus: 'PENDING' },
+        code: res.invitationCode,
+        url,
+      });
+      setStatusMessage(`New invitation code issued for ${member.fullName}: ${res.invitationCode}`);
+      setTimeout(() => setStatusMessage(null), 5000);
+    } catch (err: any) {
+      alert(`Error generating invitation: ${err.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Filtered LGs
+  const filteredLgs = useMemo(() => {
+    if (!lgSearch.trim()) return lgs;
+    const q = lgSearch.toLowerCase().trim();
+    return lgs.filter((lg) => {
+      const matchName = lg.name.toLowerCase().includes(q);
+      const matchVenue = (lg.meetingVenue || '').toLowerCase().includes(q);
+      const matchDay = (lg.meetingDay || '').toLowerCase().includes(q);
+      const matchPres = (lg.presidentName || '').toLowerCase().includes(q);
+      const matchState = (lg.state || '').toLowerCase().includes(q);
+      return matchName || matchVenue || matchDay || matchPres || matchState;
+    });
+  }, [lgs, lgSearch]);
+
+  const handleExecuteDeleteLg = async () => {
+    if (!lgToDelete) return;
+    setIsProcessing(true);
+    try {
+      await dataService.deleteLGAsync(lgToDelete.id);
+      setStatusMessage(`Local Government chapter "${lgToDelete.name}" deleted successfully.`);
+      setLgToDelete(null);
+      setTimeout(() => setStatusMessage(null), 5000);
+    } catch (err: any) {
+      alert(`Error deleting chapter: ${err.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleForceClearDemo = async () => {
+    if (
+      window.confirm(
+        'FORCE CLEAR DEMO CONTENT: This will permanently remove all mock members, demo tasks, demo activities, and demo reports from the database, leaving only authentic Super Admins and the 18 official Ondo State Local Government chapters. Proceed?'
+      )
+    ) {
+      setIsProcessing(true);
+      try {
+        await dataService.forceClearDemoContentAsync();
+        setStatusMessage('Demo content successfully purged. Application is now production-ready.');
+        setTimeout(() => setStatusMessage(null), 5000);
+      } catch (err: any) {
+        alert(`Error clearing demo content: ${err.message}`);
+      } finally {
+        setIsProcessing(false);
+      }
+    }
+  };
+
+  const handleClearData = async () => {
+    if (
+      window.confirm(
+        'DANGER: Clear ALL operational data? This will delete all members, tasks, attendance, and settings. This action is irreversible.'
+      )
+    ) {
+      await dataService.clearAllDataAsync();
+      setStatusMessage('Operational data cleared. The system will re-initialize on the next load.');
+      setTimeout(() => setStatusMessage(null), 5000);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    const newSettings = {
+      ...settings,
+      stateSecretariat: editSecretariat.trim(),
+      operationalBatch: editBatch.trim(),
+      operationalBatches: editBatches,
+      youtubeChannelUrl: editYtUrl.trim(),
+      youtubeChannelName: editYtName.trim(),
+    };
+    await dataService.saveSettings(newSettings);
+    setIsEditingSettings(false);
+  };
+
+  const handleAddBatch = () => {
+    if (newBatchToAdd.trim() && !editBatches.includes(newBatchToAdd.trim())) {
+      setEditBatches([...editBatches, newBatchToAdd.trim()]);
+      setNewBatchToAdd('');
+    }
+  };
+
+  const handleRemoveBatch = (batch: string) => {
+    setEditBatches(editBatches.filter((b) => b !== batch));
+  };
+
+  const handleExportBackup = () => {
+    const data = {
+      exportedAt: new Date().toISOString(),
+      members: dataService.getMembers(),
+      tasks: dataService.getTasks(),
+      activities: dataService.getActivities(),
+      documents: dataService.getDocuments(),
+      learning: dataService.getLearning(),
+      reports: dataService.getReports(),
+      lgs: dataService.getLGs(),
+    };
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dodeel_cds_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-purple-700" />
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              CDS Administration Control
+            </h1>
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Full governance for CDS Coordinator • Controlled Invitations, Roles, Local Governments & System Settings
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <button
+            type="button"
+            onClick={handleClearData}
+            className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-colors"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Clear Data</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportBackup}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold shadow-2xs transition-colors"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-500" />
+            <span>Export Backup</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleForceClearDemo}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Force Clear Demo (Production)</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Admin Tabs */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+        {[
+          { id: 'USERS', label: 'Membership & Access Governance', icon: Users },
+          { id: 'LGS', label: 'Local Governments', icon: Building2 },
+          { id: 'SYSTEM', label: 'System & Storage', icon: Database },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeAdminTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveAdminTab(tab.id as any)}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors ${
+                isActive
+                  ? 'bg-purple-900 text-white shadow-2xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Admin Status Notification */}
+      {statusMessage && (
+        <div className="bg-purple-50 border border-purple-200 text-purple-900 px-4 py-3 rounded-xl text-xs font-semibold flex items-center justify-between animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-purple-700 shrink-0" />
+            <span>{statusMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStatusMessage(null)}
+            className="text-purple-600 hover:text-purple-800 text-xs font-bold ml-2"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* TAB 1: USERS & MEMBERSHIP GOVERNANCE */}
+      {activeAdminTab === 'USERS' && (
+        <div className="space-y-4">
+          {/* Metrics summary cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                Total Registered
+              </span>
+              <p className="text-xl font-black text-slate-900 mt-1">{totalCount}</p>
+              <span className="text-[10px] text-slate-500">Controlled Member Profiles</span>
+            </div>
+
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">
+                Active Accounts
+              </span>
+              <p className="text-xl font-black text-emerald-700 mt-1">{activeCount}</p>
+              <span className="text-[10px] text-emerald-600">Can Authenticate & Access</span>
+            </div>
+
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block">
+                Pending Activation
+              </span>
+              <p className="text-xl font-black text-amber-700 mt-1">{pendingCount}</p>
+              <span className="text-[10px] text-amber-600">Awaiting Member Password</span>
+            </div>
+
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider block">
+                Suspended Access
+              </span>
+              <p className="text-xl font-black text-rose-700 mt-1">{suspendedCount}</p>
+              <span className="text-[10px] text-rose-600">Historical Data Preserved</span>
+            </div>
+          </div>
+
+          {/* Main User Registry Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4 sm:p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">DO-DEEL Member Account Governance</h2>
+                <p className="text-xs text-slate-500">
+                  Search, register, invite, suspend, and reassign roles under the controlled membership model
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAddMemberOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors shrink-0"
+              >
+                <UserCheck className="w-4 h-4" />
+                <span>Register & Invite Member</span>
+              </button>
+            </div>
+
+            {/* Search and Filters */}
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col md:flex-row gap-2.5">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  placeholder="Search by name, email, phone, state code, or invite code..."
+                  className="w-full bg-white border border-slate-200 rounded-lg py-2 pl-9 pr-3 text-xs outline-none focus:ring-1 focus:ring-purple-600"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={filterLg}
+                  onChange={(e) => setFilterLg(e.target.value)}
+                  className="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-slate-700 font-medium"
+                >
+                  <option value="ALL">All LG Chapters</option>
+                  {lgs.map((lg) => (
+                    <option key={lg.id} value={lg.id}>
+                      {lg.name}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={filterAccountStatus}
+                  onChange={(e) => setFilterAccountStatus(e.target.value)}
+                  className="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-slate-700 font-bold"
+                >
+                  <option value="ALL">All Account Status</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="PENDING">Pending Activation</option>
+                  <option value="SUSPENDED">Suspended</option>
+                </select>
+
+                <select
+                  value={filterRole}
+                  onChange={(e) => setFilterRole(e.target.value)}
+                  className="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-slate-700 font-medium"
+                >
+                  <option value="ALL">All Roles</option>
+                  {(Object.keys(ROLE_LABELS) as UserRole[]).map((r) => (
+                    <option key={r} value={r}>
+                      {ROLE_LABELS[r]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Members Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-500 font-semibold bg-slate-50/50">
+                    <th className="py-2.5 px-3">Member & Identity</th>
+                    <th className="py-2.5 px-3">Chapter (LG)</th>
+                    <th className="py-2.5 px-3">Role</th>
+                    <th className="py-2.5 px-3">Account Access</th>
+                    <th className="py-2.5 px-3">Membership</th>
+                    <th className="py-2.5 px-3 text-right">Administrative Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-slate-400">
+                        No members matching the selected filter criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredUsers.map((m) => {
+                      const isSelf = currentUser?.id === m.id;
+                      const isSuper = m.role === 'CDS_COORDINATOR';
+
+                      return (
+                        <tr key={m.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-3 px-3">
+                            <p className="font-bold text-slate-900">{m.fullName}</p>
+                            <p className="text-[11px] text-slate-500">{m.email}</p>
+                            <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-400 font-mono">
+                              <span>{m.phone}</span>
+                              {m.stateCode && <span>• {m.stateCode}</span>}
+                              {m.accountStatus === 'PENDING' && (
+                                <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-black font-mono mt-1 ring-1 ring-amber-500/20">
+                                  <KeyRound className="w-2.5 h-2.5" />
+                                  {m.invitationCode || 'MISSING'}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-3 text-slate-600 font-medium">
+                            {m.lgName}
+                          </td>
+
+                          <td className="py-3 px-3">
+                            <RoleBadge role={m.role} size="sm" />
+                          </td>
+
+                          <td className="py-3 px-3">
+                            <AccountStatusBadge status={m.accountStatus || 'ACTIVE'} size="sm" />
+                          </td>
+
+                          <td className="py-3 px-3">
+                            <StatusBadge status={m.membershipStatus} size="sm" />
+                          </td>
+
+                          <td className="py-3 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              {/* Change Role Button */}
+                              <button
+                                type="button"
+                                disabled={isSelf}
+                                onClick={() => setChangeRoleTarget({ member: m, newRole: m.role })}
+                                className="px-2 py-1 text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg border border-purple-200 transition-colors disabled:opacity-40"
+                                title="Change Operational Role"
+                              >
+                                Role
+                              </button>
+
+                              {/* Reassign LG Button */}
+                              <button
+                                type="button"
+                                disabled={isSelf || lgs.length === 0}
+                                onClick={() => setChangeLgTarget({ member: m, newLgId: m.lgId })}
+                                className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors disabled:opacity-40"
+                                title="Reassign Local Government Chapter"
+                              >
+                                Chapter
+                              </button>
+
+                              {/* Resend Invitation for PENDING */}
+                              {m.accountStatus === 'PENDING' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleResendInvitation(m)}
+                                  className="px-2 py-1 text-[11px] font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors"
+                                  title="Regenerate & Resend Invitation Code"
+                                >
+                                  Resend
+                                </button>
+                              )}
+
+                              {/* Suspend / Reactivate Controls */}
+                              {!isSelf && !isSuper && (
+                                <>
+                                  {m.accountStatus === 'SUSPENDED' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmReactivateMember(m)}
+                                      className="px-2 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors"
+                                    >
+                                      Reactivate
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmSuspendMember(m)}
+                                      className="px-2 py-1 text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition-colors"
+                                    >
+                                      Suspend
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: LOCAL GOVERNMENTS */}
+      {activeAdminTab === 'LGS' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-purple-700" />
+                <h2 className="text-sm sm:text-base font-bold text-slate-900">Local Government Chapters</h2>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
+                  {lgs.length} Chapters
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Manage meeting venues, scheduled meeting days, appointed chapter leadership, and member allocations
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setLgToEdit(null);
+                setIsLgModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-900 hover:bg-purple-950 text-white rounded-xl text-xs font-bold shadow-xs transition-colors shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Chapter</span>
+            </button>
+          </div>
+
+          {/* Search Chapters Bar */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              value={lgSearch}
+              onChange={(e) => setLgSearch(e.target.value)}
+              placeholder="Search chapters by LG name, meeting venue, schedule, or president..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 pl-9 pr-3 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-purple-600 transition-all"
+            />
+          </div>
+
+          {/* Chapters Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {filteredLgs.length === 0 ? (
+              <div className="col-span-full py-10 text-center text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                <Building2 className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                <p className="font-semibold text-xs text-slate-600">No chapters matching your search</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Try searching with a different term or create a new chapter.</p>
+              </div>
+            ) : (
+              filteredLgs.map((lg) => {
+                // Calculate dynamic member count for this LG
+                const chapterMembers = members.filter((m) => m.lgId === lg.id);
+                const activeCount = chapterMembers.filter((m) => (m.accountStatus || 'ACTIVE') === 'ACTIVE').length;
+                const presidentMember = members.find((m) => m.id === lg.presidentId);
+
+                return (
+                  <div
+                    key={lg.id}
+                    className="p-4 bg-slate-50/70 hover:bg-white rounded-2xl border border-slate-200 hover:border-purple-300 transition-all flex flex-col justify-between space-y-3.5 shadow-2xs hover:shadow-xs group"
+                  >
+                    <div className="space-y-2.5">
+                      {/* Chapter Title & Member Badge */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h3 className="font-black text-slate-900 text-sm tracking-tight group-hover:text-purple-900 transition-colors">
+                              {lg.name}
+                            </h3>
+                            <span className="text-[10px] font-semibold text-slate-500 bg-slate-200/70 px-1.5 py-0.2 rounded">
+                              {lg.state || 'Ondo State'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-lg shrink-0 border border-emerald-200">
+                          {activeCount} Active {activeCount === 1 ? 'Member' : 'Members'}
+                        </span>
+                      </div>
+
+                      {/* Appointed President */}
+                      <div className="p-2.5 bg-white rounded-xl border border-slate-200/80 space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Chapter Leadership
+                        </span>
+                        {lg.presidentName || presidentMember ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 font-bold text-[10px]">
+                              {(lg.presidentName || presidentMember?.fullName || 'P').charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-slate-900 text-xs truncate">
+                                {lg.presidentName || presidentMember?.fullName}
+                              </p>
+                              <p className="text-[10px] text-purple-700 font-medium truncate">
+                                LG President {presidentMember?.phone ? `• ${presidentMember.phone}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-amber-700 bg-amber-50/70 p-1 rounded text-[11px] font-semibold">
+                            <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                            <span>President Not Appointed (Vacant)</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Meeting Venue & Schedule */}
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex items-start gap-2 text-slate-600">
+                          <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                          <div className="min-w-0">
+                            <span className="text-[10px] font-semibold text-slate-400 block">Meeting Venue:</span>
+                            <span className="font-medium text-slate-800 text-[11px] line-clamp-2">
+                              {lg.meetingVenue || 'Council Secretariat'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-2 text-slate-600">
+                          <Calendar className="w-3.5 h-3.5 text-purple-600 shrink-0 mt-0.5" />
+                          <div className="min-w-0">
+                            <span className="text-[10px] font-semibold text-slate-400 block">Schedule:</span>
+                            <span className="font-medium text-slate-800 text-[11px]">
+                              {lg.meetingDay || 'Every Thursday, 10:00 AM'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Chapter Card Actions */}
+                    <div className="pt-3 border-t border-slate-200/70 flex items-center justify-between gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveAdminTab('USERS');
+                          setFilterLg(lg.id);
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-[11px] font-semibold transition-colors"
+                        title="Filter user list to this chapter"
+                      >
+                        <Users className="w-3 h-3 text-slate-500" />
+                        <span>Members ({chapterMembers.length})</span>
+                      </button>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLgToEdit(lg);
+                            setIsLgModalOpen(true);
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded-lg text-[11px] font-bold transition-colors"
+                          title="Edit Chapter details, venue, schedule, or president"
+                        >
+                          <Pencil className="w-3 h-3 text-purple-700" />
+                          <span>Edit Chapter</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setLgToDelete(lg)}
+                          className="p-1.5 text-rose-600 hover:bg-rose-50 hover:text-rose-800 border border-transparent hover:border-rose-200 rounded-lg transition-colors"
+                          title="Delete Chapter"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: SYSTEM SETTINGS & AUDIT */}
+      {activeAdminTab === 'SYSTEM' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-900">DO-DEEL Deployment Specifications</h2>
+              {!isEditingSettings ? (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingSettings(true)}
+                  className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200"
+                >
+                  Edit Specifications
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingSettings(false)}
+                    className="text-xs font-bold text-slate-500"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveSettings}
+                    className="text-xs font-bold text-white bg-emerald-600 px-2.5 py-1 rounded-lg"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[11px] text-slate-400 block font-medium">State Secretariat</span>
+                {isEditingSettings ? (
+                  <input
+                    type="text"
+                    value={editSecretariat}
+                    onChange={(e) => setEditSecretariat(e.target.value)}
+                    className="w-full mt-1 bg-white border border-slate-300 rounded p-1 font-bold"
+                  />
+                ) : (
+                  <span className="font-bold text-slate-900 mt-0.5 block">{settings.stateSecretariat}</span>
+                )}
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[11px] text-slate-400 block font-medium uppercase tracking-wider">Operational Batch</span>
+                {isEditingSettings ? (
+                  <div className="mt-1 space-y-2">
+                    <select
+                      value={editBatch}
+                      onChange={(e) => setEditBatch(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-xs"
+                    >
+                      {editBatches.map((batch) => (
+                        <option key={batch} value={batch}>
+                          {batch}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-400">Current active batch for new registrations</p>
+                  </div>
+                ) : (
+                  <span className="font-bold text-slate-900 mt-0.5 block">{settings.operationalBatch}</span>
+                )}
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 sm:col-span-2">
+                <span className="text-[11px] text-slate-400 block font-medium uppercase tracking-wider mb-2">Configure All Batches</span>
+                {isEditingSettings ? (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      {editBatches.map((batch) => (
+                        <div key={batch} className="flex items-center gap-1 bg-white border border-slate-200 px-2 py-1 rounded-lg">
+                          <span className="font-bold text-slate-700">{batch}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveBatch(batch)}
+                            className="text-rose-500 hover:text-rose-700 p-0.5"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2 max-w-sm">
+                      <input
+                        type="text"
+                        placeholder="New Batch Name (e.g. 2026 Batch B)"
+                        value={newBatchToAdd}
+                        onChange={(e) => setNewBatchToAdd(e.target.value)}
+                        className="flex-1 bg-white border border-slate-300 rounded p-1.5 text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddBatch}
+                        className="bg-slate-900 text-white p-1.5 rounded-lg"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {settings.operationalBatches?.map((batch) => (
+                      <span key={batch} className="bg-white border border-slate-200 px-2 py-1 rounded-lg font-semibold text-slate-600">
+                        {batch}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Official YouTube Channel Settings */}
+              <div className="p-3 bg-red-50/60 rounded-xl border border-red-200 sm:col-span-2">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <Youtube className="w-4 h-4 text-red-600 fill-red-600" />
+                    <span className="text-[11px] text-red-950 font-bold uppercase tracking-wider">
+                      Official YouTube Channel (Learning Hub Video Access)
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-red-700 font-bold bg-red-100/80 px-2 py-0.5 rounded-full border border-red-200">
+                    All users must subscribe to watch videos
+                  </span>
+                </div>
+
+                {isEditingSettings ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Channel Display Name
+                      </label>
+                      <input
+                        type="text"
+                        value={editYtName}
+                        onChange={(e) => setEditYtName(e.target.value)}
+                        placeholder="e.g. DO-DEEL CDS Official Channel"
+                        className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Channel URL
+                      </label>
+                      <input
+                        type="url"
+                        value={editYtUrl}
+                        onChange={(e) => setEditYtUrl(e.target.value)}
+                        placeholder="https://www.youtube.com/@DODEEL-CDS"
+                        className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-xs"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-1">
+                    <div>
+                      <span className="font-bold text-slate-900 block text-xs">
+                        {settings.youtubeChannelName || 'DO-DEEL CDS Official Channel'}
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        {settings.youtubeChannelUrl || 'https://www.youtube.com/@DODEEL-CDS'}
+                      </span>
+                    </div>
+                    <a
+                      href={settings.youtubeChannelUrl || 'https://www.youtube.com/@DODEEL-CDS'}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-red-700 hover:text-red-800 bg-white px-3 py-1.5 rounded-lg border border-red-200 shadow-2xs shrink-0"
+                    >
+                      <span>Visit Channel</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[11px] text-slate-400 block font-medium">Access Architecture</span>
+                <span className="font-bold text-emerald-700 mt-0.5 block">
+                  Controlled Invitation Model (No Open Signup)
+                </span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[11px] text-slate-400 block font-medium">Super Admin Authority</span>
+                <span className="font-mono text-purple-700 font-bold mt-0.5 block truncate">
+                  kolawoles445@gmail.com
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">System Maintenance & Sample Data</p>
+              <p className="mt-0.5 leading-relaxed text-amber-800">
+                You can reset all data back to the clean, realistic DO-DEEL sample records at any time using the Reset button at top right, or export your operational data as a verified JSON backup.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SENSITIVE ACTION MODAL 1: SUSPEND ACCOUNT */}
+      {confirmSuspendMember && (
+        <div className="fixed inset-0 z-60 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-2.5 text-rose-700 font-bold text-sm">
+              <ShieldAlert className="w-5 h-5 shrink-0" />
+              <span>Confirm Account Suspension</span>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to suspend portal access for <strong>{confirmSuspendMember.fullName}</strong>?
+            </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-900 space-y-1">
+              <p className="font-bold">Data Integrity Notice:</p>
+              <p>
+                The member's login access will be blocked immediately. However, all historical records (past tasks, attendance records, submitted monthly reports, and evidence) will remain permanently intact.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setConfirmSuspendMember(null)}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteSuspend}
+                disabled={isProcessing}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold"
+              >
+                {isProcessing ? 'Suspending...' : 'Confirm Suspension'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SENSITIVE ACTION MODAL 2: REACTIVATE ACCOUNT */}
+      {confirmReactivateMember && (
+        <div className="fixed inset-0 z-60 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-2.5 text-emerald-700 font-bold text-sm">
+              <ShieldCheck className="w-5 h-5 shrink-0" />
+              <span>Confirm Account Reactivation</span>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Reactivate DO-DEEL portal access for <strong>{confirmReactivateMember.fullName}</strong>?
+            </p>
+            <p className="text-[11px] text-slate-500">
+              The member will be able to log in with their email and password immediately, continuing duties in <strong>{confirmReactivateMember.lgName}</strong>.
+            </p>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setConfirmReactivateMember(null)}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteReactivate}
+                disabled={isProcessing}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold"
+              >
+                {isProcessing ? 'Reactivating...' : 'Confirm Reactivation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SENSITIVE ACTION MODAL 3: CHANGE ROLE */}
+      {changeRoleTarget && (
+        <div className="fixed inset-0 z-60 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-2.5 text-purple-800 font-bold text-sm">
+              <Shield className="w-5 h-5 shrink-0" />
+              <span>Confirm Operational Role Change</span>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Modifying authority level for <strong>{changeRoleTarget.member.fullName}</strong> ({changeRoleTarget.member.email}):
+            </p>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-700 block">Select New Role:</label>
+              <select
+                value={changeRoleTarget.newRole}
+                onChange={(e) =>
+                  setChangeRoleTarget({
+                    ...changeRoleTarget,
+                    newRole: e.target.value as UserRole,
+                  })
+                }
+                className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-purple-600"
+              >
+                {(Object.keys(ROLE_LABELS) as UserRole[]).map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABELS[r]}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <p className="text-[11px] text-slate-500">
+              Role permissions and menu items will immediately adjust upon confirmation.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setChangeRoleTarget(null)}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteChangeRole}
+                disabled={isProcessing}
+                className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold"
+              >
+                {isProcessing ? 'Updating Role...' : 'Confirm Role Change'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SENSITIVE ACTION MODAL 4: CHANGE LG CHAPTER */}
+      {changeLgTarget && (
+        <div className="fixed inset-0 z-60 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-2.5 text-blue-800 font-bold text-sm">
+              <MapPin className="w-5 h-5 shrink-0" />
+              <span>Confirm Chapter Reassignment</span>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Transfer <strong>{changeLgTarget.member.fullName}</strong> to another Local Government chapter:
+            </p>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-700 block">Select Destination Chapter:</label>
+              <select
+                value={changeLgTarget.newLgId}
+                onChange={(e) =>
+                  setChangeLgTarget({
+                    ...changeLgTarget,
+                    newLgId: e.target.value,
+                  })
+                }
+                className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-600"
+              >
+                {lgs.map((lg) => (
+                  <option key={lg.id} value={lg.id}>
+                    {lg.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <p className="text-[11px] text-slate-500">
+              Active member counts for both source and destination chapters will automatically update.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setChangeLgTarget(null)}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteChangeLg}
+                disabled={isProcessing}
+                className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold"
+              >
+                {isProcessing ? 'Transferring...' : 'Confirm Chapter Change'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SENSITIVE ACTION MODAL 5: RESEND INVITATION INFO */}
+      {resendInviteInfo && (
+        <div className="fixed inset-0 z-60 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-2.5 text-amber-800 font-bold text-sm">
+              <KeyRound className="w-5 h-5 shrink-0" />
+              <span>Invitation Token Generated</span>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              A fresh activation code has been created for <strong>{resendInviteInfo.member.fullName}</strong> ({resendInviteInfo.member.email}):
+            </p>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Activation Code</span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <div className="flex-1 font-mono font-black text-sm bg-white border border-slate-200 rounded-lg p-2 text-slate-900">
+                    {resendInviteInfo.code}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(resendInviteInfo.code);
+                      setCopiedCode(true);
+                      setTimeout(() => setCopiedCode(false), 2500);
+                    }}
+                    className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg flex items-center gap-1 shrink-0"
+                  >
+                    {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedCode ? 'Copied' : 'Copy'}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Direct Activation Link</span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <input
+                    type="text"
+                    readOnly
+                    value={resendInviteInfo.url}
+                    className="flex-1 text-[11px] font-mono bg-white border border-slate-200 rounded-lg p-2 text-slate-600 truncate outline-none select-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(resendInviteInfo.url);
+                      setCopiedLink(true);
+                      setTimeout(() => setCopiedLink(false), 2500);
+                    }}
+                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1 shrink-0"
+                  >
+                    {copiedLink ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedLink ? 'Copied' : 'Copy'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setResendInviteInfo(null)}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SENSITIVE ACTION MODAL 6: DELETE LG CHAPTER */}
+      {lgToDelete && (
+        <div className="fixed inset-0 z-60 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-2.5 text-rose-700 font-bold text-sm">
+              <Trash2 className="w-5 h-5 shrink-0" />
+              <span>Confirm Chapter Deletion</span>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete the <strong>{lgToDelete.name}</strong> chapter?
+            </p>
+
+            {(() => {
+              const assignedMembersCount = members.filter((m) => m.lgId === lgToDelete.id).length;
+              if (assignedMembersCount > 0) {
+                return (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1">
+                    <p className="font-bold flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>{assignedMembersCount} Members Assigned to this Chapter</span>
+                    </p>
+                    <p className="text-[11px] text-amber-800">
+                      Deleting this chapter will leave these members without an active chapter assignment. We recommend reassigning members first.
+                    </p>
+                  </div>
+                );
+              }
+              return (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600">
+                  No active members are currently assigned to this chapter. It is safe to remove.
+                </div>
+              );
+            })()}
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setLgToDelete(null)}
+                disabled={isProcessing}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteDeleteLg}
+                disabled={isProcessing}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors"
+              >
+                {isProcessing ? 'Deleting...' : 'Delete Chapter'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MEMBER REGISTRATION & INVITATION MODAL */}
+      <MemberFormModal
+        isOpen={isAddMemberOpen}
+        onClose={() => setIsAddMemberOpen(false)}
+        lgs={lgs}
+      />
+
+      {/* LOCAL GOVERNMENT CHAPTER CREATE & EDIT MODAL */}
+      <LocalGovernmentModal
+        isOpen={isLgModalOpen}
+        onClose={() => {
+          setIsLgModalOpen(false);
+          setLgToEdit(null);
+        }}
+        lgToEdit={lgToEdit}
+        members={members}
+        defaultState={settings.state || 'Ondo State'}
+        onSaved={(msg) => {
+          setStatusMessage(msg);
+          setTimeout(() => setStatusMessage(null), 5000);
+        }}
+      />
+    </div>
+  );
+};

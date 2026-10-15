@@ -1,0 +1,207 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // -------------------------------------------------------------------------
+    // 1. GLOBAL HELPERS & PRIMITIVES
+    // -------------------------------------------------------------------------
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function incoming() {
+      return request.resource.data;
+    }
+    
+    function existing() {
+      return resource.data;
+    }
+    
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    // Safely check if a member profile document exists before reading
+    function memberExists(userId) {
+      return isSignedIn() && exists(/databases/$(database)/documents/members/$(userId));
+    }
+
+    // Safely retrieve user role from Firestore, defaulting to MEMBER if document does not exist yet
+    function getUserRole() {
+      return memberExists(request.auth.uid) ? get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role : 'MEMBER';
+    }
+    
+    function isCoordinator() {
+      return isSignedIn() && (
+        request.auth.token.email in ['kolawoles445@gmail.com', 'jomaschools@gmail.com', 'coordinator@dodeel.org'] ||
+        getUserRole() == 'CDS_COORDINATOR'
+      );
+    }
+    
+    function isStateExecutive() {
+      return isSignedIn() && (
+        isCoordinator() ||
+        getUserRole() in ['STATE_PRESIDENT', 'VP_GROWTH', 'VP_ACCOUNTABILITY', 'VP_COMMUNITY_IMPACT']
+      );
+    }
+    
+    function isLeadership() {
+      return isSignedIn() && (
+        isCoordinator() ||
+        getUserRole() in [
+          'STATE_PRESIDENT', 'VP_GROWTH', 
+          'VP_ACCOUNTABILITY', 'VP_COMMUNITY_IMPACT', 'LG_PRESIDENT'
+        ]
+      );
+    }
+
+    // Ensures account is not suspended from performing operational writes
+    function isActiveUser() {
+      return isSignedIn() && (
+        isCoordinator() ||
+        !memberExists(request.auth.uid) ||
+        get(/databases/$(database)/documents/members/$(request.auth.uid)).data.accountStatus != 'SUSPENDED'
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. SCHEMA VALIDATION HELPERS
+    // -------------------------------------------------------------------------
+    
+    function isValidMember(data) {
+      return data.keys().hasAll(['fullName', 'email', 'lgId', 'role', 'membershipStatus', 'accountStatus']) &&
+             data.fullName is string && data.fullName.size() <= 120 &&
+             data.email is string && data.email.size() <= 120 &&
+             data.role in [
+               'CDS_COORDINATOR', 'STATE_PRESIDENT', 'VP_GROWTH', 'VP_ACCOUNTABILITY', 
+               'VP_COMMUNITY_IMPACT', 'LG_PRESIDENT', 'EXECUTIVE', 'GROUP_LEADER', 'MEMBER'
+             ];
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll(['title', 'description', 'assignedTo', 'assignedBy', 'deadline']) &&
+             data.title is string && data.title.size() <= 250 &&
+             data.assignedTo is string &&
+             data.assignedBy is string &&
+             data.deadline is string;
+    }
+
+    // -------------------------------------------------------------------------
+    // 3. COLLECTION MATCH BLOCKS
+    // -------------------------------------------------------------------------
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // MEMBERS (Primary DO-DEEL Member Registry)
+    match /members/{userId} {
+      allow read: if isSignedIn(); // Directory and leadership lookups
+      
+      // Controlled creation: only authorized leaders (CDS Coordinator, State President, LG President)
+      // or an activating user claiming their own UID (Self-Registration or Invitation Activation)
+      allow create: if isSignedIn() && (
+        isCoordinator() || 
+        getUserRole() in ['STATE_PRESIDENT', 'LG_PRESIDENT'] ||
+        (isOwner(userId) && incoming().role == 'MEMBER' && incoming().accountStatus == 'ACTIVE')
+      ) && isValidMember(incoming());
+      
+      allow update: if isSignedIn() && (
+        isCoordinator() ||
+        (isLeadership() && incoming().diff(existing()).affectedKeys().hasOnly(['membershipStatus', 'accountStatus', 'role', 'lgId', 'lgName', 'assignedTeam', 'invitationCode', 'invitedAt', 'updatedAt'])) ||
+        (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['phone', 'bio', 'skills', 'fcmbAccount', 'ppaName', 'ppaAddress', 'profilePhoto', 'requiresProfileUpdate', 'lastLogin', 'lastLoginAt', 'accountStatus', 'membershipStatus', 'activatedAt', 'updatedAt', 'invitationCode', 'uid', 'isYouTubeSubscribed', 'youtubeSubscribedAt']))
+      ) && isValidMember(incoming());
+
+      allow delete: if isSignedIn() && isCoordinator();
+    }
+
+    // USERS (Mirror collection for UID-based profile structure)
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && (
+        isCoordinator() ||
+        isLeadership() ||
+        isOwner(userId)
+      );
+      allow delete: if isSignedIn() && isCoordinator();
+    }
+
+    // TASKS (Operational Responsibilities)
+    match /tasks/{taskId} {
+      allow read: if isSignedIn();
+      
+      allow create: if isSignedIn() && isActiveUser() && isLeadership() && isValidTask(incoming());
+      
+      allow update: if isSignedIn() && isActiveUser() && (
+        (isLeadership() && isValidTask(incoming())) ||
+        (existing().assignedTo == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['manualProgress', 'status', 'evidence', 'result', 'hasEvidence', 'completedAt', 'completionDate', 'updatedAt']))
+      );
+      
+      allow delete: if isSignedIn() && isCoordinator();
+    }
+
+    // ACTIVITIES
+    match /activities/{activityId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isActiveUser() && isLeadership();
+      allow update: if isSignedIn() && isActiveUser() && (isLeadership() || getUserRole() in ['EXECUTIVE', 'GROUP_LEADER']);
+      allow delete: if isSignedIn() && isCoordinator();
+    }
+
+    // LOCAL GOVERNMENTS
+    match /lgs/{lgId} {
+      allow read: if true; // Public list for registration selection
+      allow write: if isCoordinator() || isLeadership();
+    }
+
+    // DOCUMENTS
+    match /documents/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isCoordinator() || isStateExecutive();
+    }
+
+    // SETTINGS
+    match /settings/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isCoordinator();
+    }
+
+    // LEARNING
+    match /learning/{learningId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isActiveUser() && (isCoordinator() || getUserRole() in ['STATE_PRESIDENT', 'VP_GROWTH']);
+    }
+
+    // REPORTS
+    match /reports/{reportId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isActiveUser() && (isLeadership() || getUserRole() in ['EXECUTIVE', 'GROUP_LEADER']);
+    }
+
+    // ANNOUNCEMENTS
+    match /announcements/{announcementId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isActiveUser() && (isLeadership() || getUserRole() in ['EXECUTIVE', 'GROUP_LEADER']);
+    }
+
+    // WEEKLY SOCIAL MEDIA ENGAGEMENT CAMPAIGNS (Managed by VP Growth)
+    match /socialCampaigns/{campaignId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isActiveUser() && (isCoordinator() || getUserRole() in ['STATE_PRESIDENT', 'VP_GROWTH']);
+    }
+
+    // WEEKLY SOCIAL MEDIA SUBMISSIONS (Submitted by all members, reviewed by VP Growth)
+    match /socialSubmissions/{submissionId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isActiveUser() && (incoming().userId == request.auth.uid || isCoordinator() || getUserRole() in ['STATE_PRESIDENT', 'VP_GROWTH']);
+      allow update: if isSignedIn() && isActiveUser() && (incoming().userId == request.auth.uid || isCoordinator() || getUserRole() in ['STATE_PRESIDENT', 'VP_GROWTH']);
+      allow delete: if isSignedIn() && (isCoordinator() || getUserRole() in ['STATE_PRESIDENT', 'VP_GROWTH']);
+    }
+  }
+}
+

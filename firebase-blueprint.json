@@ -1,0 +1,242 @@
+{
+  "entities": {
+    "Member": {
+      "title": "CDS Member",
+      "description": "Information about a CDS member, including their role, LG, and contact details.",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "lgId": { "type": "string" },
+        "lgName": { "type": "string" },
+        "state": { "type": "string" },
+        "role": { "type": "string" },
+        "membershipStatus": { "type": "string" },
+        "dateJoined": { "type": "string" },
+        "profilePhoto": { "type": "string" },
+        "skills": { "type": "array" },
+        "callUpNo": { "type": "string" },
+        "stateCode": { "type": "string" },
+        "operationalBatch": { "type": "string" },
+        "bio": { "type": "string" },
+        "assignedTeam": { "type": "string" },
+        "fcmbAccount": { "type": "string" },
+        "ppaName": { "type": "string" },
+        "ppaAddress": { "type": "string" },
+        "requiresProfileUpdate": { "type": "boolean" },
+        "lastLogin": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["fullName", "email", "lgId", "role", "membershipStatus", "accountStatus"]
+    },
+    "Task": {
+      "title": "Task / Responsibility",
+      "description": "An assigned task or responsibility for a member.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "responsibility": { "type": "string" },
+        "description": { "type": "string" },
+        "assignedTo": { "type": "string" },
+        "assignedToName": { "type": "string" },
+        "assignedToRole": { "type": "string" },
+        "assignedBy": { "type": "string" },
+        "assignedByName": { "type": "string" },
+        "assignedLG": { "type": "string" },
+        "assignedLGName": { "type": "string" },
+        "team": { "type": "string" },
+        "kpi": { "type": "string" },
+        "priority": { "type": "string" },
+        "startDate": { "type": "string" },
+        "deadline": { "type": "string" },
+        "manualProgress": { "type": "string" },
+        "status": { "type": "string" },
+        "completedAt": { "type": "string" },
+        "result": { "type": "string" },
+        "hasEvidence": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["title", "description", "assignedTo", "assignedBy", "deadline"]
+    },
+    "Activity": {
+      "title": "CDS Activity",
+      "description": "A scheduled event, meeting, or community outreach activity.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "locationType": { "type": "string" },
+        "location": { "type": "string" },
+        "lgId": { "type": "string" },
+        "lgName": { "type": "string" },
+        "organizerId": { "type": "string" },
+        "organizerName": { "type": "string" },
+        "organizerRole": { "type": "string" },
+        "status": { "type": "string" },
+        "expectedAttendance": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["title", "date", "lgId", "status"]
+    },
+    "LocalGovernment": {
+      "title": "Local Government",
+      "description": "An NYSC LG chapter.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "state": { "type": "string" },
+        "presidentId": { "type": "string" },
+        "presidentName": { "type": "string" },
+        "meetingVenue": { "type": "string" },
+        "meetingDay": { "type": "string" },
+        "activeMemberCount": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["name", "state"]
+    },
+    "CDSDocument": {
+      "title": "CDS Document",
+      "description": "Governance or resource document.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "fileSize": { "type": "string" },
+        "fileType": { "type": "string" },
+        "uploadDate": { "type": "string" },
+        "uploadedBy": { "type": "string" },
+        "uploadedByName": { "type": "string" },
+        "visibility": { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "required": ["title", "fileUrl", "visibility"]
+    },
+    "LearningResource": {
+      "title": "Learning Resource",
+      "description": "A tutorial, PDF, or external link for member growth.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "type": { "type": "string" },
+        "url": { "type": "string" },
+        "youtubeVideoId": { "type": "string" },
+        "thumbnailUrl": { "type": "string" },
+        "category": { "type": "string" },
+        "durationOrPages": { "type": "string" },
+        "status": { "type": "string" },
+        "publishedBy": { "type": "string" },
+        "publisherName": { "type": "string" },
+        "publisherRole": { "type": "string" },
+        "publishedAt": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "url", "type", "category"]
+    },
+    "MonthlyReport": {
+      "title": "Monthly Report",
+      "description": "An operational report submitted by an LG or executive.",
+      "type": "object",
+      "properties": {
+        "month": { "type": "string" },
+        "year": { "type": "number" },
+        "submitterId": { "type": "string" },
+        "submitterName": { "type": "string" },
+        "submitterRole": { "type": "string" },
+        "lgId": { "type": "string" },
+        "lgName": { "type": "string" },
+        "activitiesAssigned": { "type": "number" },
+        "activitiesCompleted": { "type": "number" },
+        "evidence": { "type": "string" },
+        "results": { "type": "string" },
+        "beneficiariesReached": { "type": "number" },
+        "challenges": { "type": "string" },
+        "outstandingTasks": { "type": "string" },
+        "nextMonthPlan": { "type": "string" },
+        "submittedAt": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["month", "year", "submitterId", "lgId", "status"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "A system-wide or LG-specific notice.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "targetLG": { "type": "string" },
+        "priority": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorRole": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["title", "content", "authorId"]
+    },
+    "SystemSettings": {
+      "title": "System Settings",
+      "description": "Global configuration settings.",
+      "type": "object",
+      "properties": {
+        "stateSecretariat": { "type": "string" },
+        "operationalBatch": { "type": "string" },
+        "operationalBatches": { "type": "array" },
+        "state": { "type": "string" }
+      },
+      "required": ["stateSecretariat", "operationalBatch", "state"]
+    }
+  },
+  "firestore": {
+    "members": {
+      "schema": "Member",
+      "description": "Collection of CDS members."
+    },
+    "tasks": {
+      "schema": "Task",
+      "description": "Collection of assigned responsibilities."
+    },
+    "activities": {
+      "schema": "Activity",
+      "description": "Collection of scheduled CDS activities."
+    },
+    "lgs": {
+      "schema": "LocalGovernment",
+      "description": "Collection of LG chapters."
+    },
+    "documents": {
+      "schema": "CDSDocument",
+      "description": "Collection of resource documents."
+    },
+    "learning": {
+      "schema": "LearningResource",
+      "description": "Collection of growth materials."
+    },
+    "reports": {
+      "schema": "MonthlyReport",
+      "description": "Collection of operational reports."
+    },
+    "announcements": {
+      "schema": "Announcement",
+      "description": "Collection of news and notices."
+    },
+    "settings": {
+      "schema": "SystemSettings",
+      "description": "Global system configuration (usually a single document)."
+    }
+  }
+}

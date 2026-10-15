@@ -1,0 +1,145 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // -------------------------------------------------------------------------
+    // 1. GLOBAL HELPERS & PRIMITIVES
+    // -------------------------------------------------------------------------
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function incoming() {
+      return request.resource.data;
+    }
+    
+    function existing() {
+      return resource.data;
+    }
+    
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    // Auth tokens do not contain roles. We must look up the member document.
+    function getMemberData(userId) {
+      return get(/databases/$(database)/documents/members/$(userId)).data;
+    }
+    
+    function getUserRole() {
+      return getMemberData(request.auth.uid).role;
+    }
+    
+    function isLeadership() {
+      return isSignedIn() && getUserRole() in [
+        'CDS_COORDINATOR', 'STATE_PRESIDENT', 'VP_GROWTH', 
+        'VP_ACCOUNTABILITY', 'VP_COMMUNITY_IMPACT', 'LG_PRESIDENT'
+      ];
+    }
+    
+    function isCoordinator() {
+      return isSignedIn() && getUserRole() == 'CDS_COORDINATOR';
+    }
+
+    function isStateExecutive() {
+      return isSignedIn() && getUserRole() in ['STATE_PRESIDENT', 'VP_GROWTH', 'VP_ACCOUNTABILITY', 'VP_COMMUNITY_IMPACT'];
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. SCHEMA VALIDATION HELPERS
+    // -------------------------------------------------------------------------
+    
+    function isValidMember(data) {
+      return data.keys().hasAll(['fullName', 'email', 'lgId', 'role', 'membershipStatus']) &&
+             data.fullName is string && data.fullName.size() <= 100 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.role in [
+               'CDS_COORDINATOR', 'STATE_PRESIDENT', 'VP_GROWTH', 'VP_ACCOUNTABILITY', 
+               'VP_COMMUNITY_IMPACT', 'LG_PRESIDENT', 'EXECUTIVE', 'GROUP_LEADER', 'MEMBER'
+             ];
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll(['title', 'description', 'assignedTo', 'assignedBy', 'deadline']) &&
+             data.title is string && data.title.size() <= 200 &&
+             data.assignedTo is string &&
+             data.assignedBy is string &&
+             data.deadline is string;
+    }
+
+    // -------------------------------------------------------------------------
+    // 3. COLLECTION MATCH BLOCKS
+    // -------------------------------------------------------------------------
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // MEMBERS
+    match /members/{userId} {
+      allow get: if isSignedIn() && (isOwner(userId) || isLeadership());
+      allow list: if isSignedIn() && (isLeadership() || isOwner(userId));
+      
+      allow create: if isSignedIn() && (
+        isCoordinator() || 
+        (incoming().role == 'MEMBER' && getUserRole() == 'LG_PRESIDENT') ||
+        isOwner(userId) // Signup
+      ) && isValidMember(incoming());
+      
+      allow update: if isSignedIn() && (
+        isCoordinator() ||
+        (isLeadership() && incoming().diff(existing()).affectedKeys().hasOnly(['membershipStatus', 'role', 'assignedTeam'])) ||
+        (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['phone', 'bio', 'skills', 'fcmbAccount', 'ppaName', 'ppaAddress', 'profilePhoto', 'requiresProfileUpdate', 'lastLogin']))
+      ) && isValidMember(incoming());
+    }
+
+    // TASKS
+    match /tasks/{taskId} {
+      allow read: if isSignedIn() && (
+        isLeadership() || 
+        existing().assignedTo == request.auth.uid || 
+        existing().assignedBy == request.auth.uid
+      );
+      
+      allow create: if isSignedIn() && isLeadership() && isValidTask(incoming());
+      
+      allow update: if isSignedIn() && (
+        (isLeadership() && isValidTask(incoming())) ||
+        (existing().assignedTo == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['manualProgress', 'status', 'evidence', 'result', 'hasEvidence']))
+      );
+      
+      allow delete: if isSignedIn() && isCoordinator();
+    }
+
+    // ACTIVITIES
+    match /activities/{activityId} {
+      allow read: if isSignedIn();
+      allow create: if isLeadership();
+      allow update: if isLeadership();
+      allow delete: if isCoordinator();
+    }
+
+    // LGS (Local Governments)
+    match /lgs/{lgId} {
+      allow read: if isSignedIn();
+      allow write: if isCoordinator();
+    }
+
+    // DOCUMENTS
+    match /documents/{docId} {
+      allow read: if isSignedIn(); // Simplified for now, though visibility logic could be added
+      allow write: if isCoordinator() || isStateExecutive();
+    }
+
+    // SETTINGS
+    match /settings/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isCoordinator();
+    }
+  }
+}
